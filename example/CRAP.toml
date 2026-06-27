@@ -1,0 +1,29 @@
+[cargo]
+packages = ["example"]
+features = []
+
+[windows]
+toolchains = [
+    "x86_64-pc-windows-gnu",
+]
+install_path = "$INSTALLPATH"
+files = [
+    { source = "Cargo.toml", destination = "manifests/Cargo.toml" },
+]
+
+# [linux]
+# toolchains = [
+#     "x86_64-unknown-linux-gnu",
+# ]
+# files = [
+#     { source = "Cargo.toml", destination = "etc/example/Cargo.toml" },
+# ]
+
+# [macos]
+# toolchains = [
+#     "x86_64-apple-darwin",
+#     "aarch64-apple-darwin",
+# ]
+# files = [
+#     { source = "Cargo.toml", destination = "etc/example/Cargo.toml" },
+# ]

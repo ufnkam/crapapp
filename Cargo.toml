@@ -1,0 +1,20 @@
+[package]
+name = "cargo-crapapp"
+version = "0.1.0"
+edition = "2024"
+description = "CLI for building CRAP app installers and self-contained app bundles"
+license = "MIT OR Apache-2.0"
+
+[[bin]]
+name = "cargo-crapapp"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1.0.103"
+cargo_metadata = "0.23.1"
+clap = { version = "4.5.40", features = ["derive"] }
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.150"
+strum = { version = "0.28.0", features = ["derive"] }
+strum_macros = "0.28.0"
+toml = "0.8.23"
