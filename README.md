@@ -5,12 +5,11 @@ Cargo plugin for bundling multiplatform Rust apps from `CRAP.toml`.
 It exists because some enterprise environments, especially in banking, are very
 good at inventing security rituals and very bad at understanding what is
 actually secure. Sometimes Artifactory is missing, nobody owns Linux package
-distribution, Windows packaging tools are blocked or impractical, and the only
-thing left is a small tool that does the boring thing directly.
+distribution, Windows packaging tools are blocked or are piece of sh*t.
 
 The goal is simple: read a manifest, build Rust binaries for configured
 targets, and produce something a user can install without negotiating with five
-teams and a spreadsheet.
+teams and producing 2534 Jira tickets.
 
 ## Status
 
@@ -91,12 +90,4 @@ The design bias is:
 
 ## Should You Use It?
 
-Probably not.
-
-This is young software with a stupid name and sharp edges. If you use it in
-production and it ruins your day, that is between you, your incident process,
-and whatever cursed change-management ritual your company worships.
-
-But if you are trapped in a place where normal packaging options are blocked,
-broken, or guarded by people who think WiX is a security vulnerability because
-it has an `x` in the name, then maybe this little bastard is useful.
+Probably not. The only reason to use it is that your life circles in a corporate trap and normal packaging tools are politically unavailable.
