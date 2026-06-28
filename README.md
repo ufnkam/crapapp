@@ -21,6 +21,9 @@ teams and producing 2534 Jira tickets.
 - Embedded `uninstall.exe`.
 - Per-user Windows uninstall registry entry.
 - Per-user `PATH` updates through `HKCU\Environment`.
+- Installer-time `ADD_TO_PATH` variable for PATH updates.
+- Windows icon wiring for configured app binaries and uninstall registry display icons.
+- Microsoft Fluent icons for generated setup/uninstall executables.
 - `inspect` command with text and JSON output.
 
 ### Unfinished
@@ -33,7 +36,6 @@ teams and producing 2534 Jira tickets.
 ### Planned
 
 - Installation and uninstallation GUI for Windows.
-- Windows icons.
 - Signing Windows apps.
 - Better output directory structure.
 - More validation around installer paths and payload layout.
@@ -41,18 +43,26 @@ teams and producing 2534 Jira tickets.
 ## Example
 
 ```toml
-[cargo]
+[build]
+publisher = "Example Publisher"
 packages = ["example"]
 features = []
 
 [windows]
-toolchains = [
+targets = [
     "x86_64-pc-windows-gnu",
 ]
 install_path = "$INSTALLPATH"
 files = [
     { source = "Cargo.toml", destination = "manifests/Cargo.toml" },
 ]
+```
+
+Windows setup variables are passed with repeated `--args KEY=value` flags:
+
+```sh
+setup.exe --args INSTALLPATH=C:\Users\me\AppData\Local\example
+setup.exe --args INSTALLPATH=C:\Users\me\AppData\Local\example --args ADD_TO_PATH=0
 ```
 
 Inspect the generated build manifest:
@@ -71,7 +81,7 @@ cargo crapapp build
 Windows output currently lands in:
 
 ```text
-.crapapp_build/windows/<toolchain>/setup.exe
+.crapapp_build/windows/<target>/setup.exe
 ```
 
 ## Why So Small?

@@ -2,18 +2,23 @@ use anyhow::{Context, Result};
 use serde::Deserialize;
 use std::path::Path;
 
+use crate::services::icons::IconMapping;
+
 pub const MANIFEST_PATH: &str = "CRAP.toml";
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CrapManifest {
-    pub cargo: Option<CargoBuild>,
+    pub build: Option<BuildConfig>,
     pub windows: Option<WindowsPlatform>,
     pub macos: Option<MacosPlatform>,
     pub linux: Option<LinuxPlatform>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct CargoBuild {
+#[serde(deny_unknown_fields)]
+pub struct BuildConfig {
+    pub publisher: Option<String>,
     #[serde(default)]
     pub packages: Vec<String>,
     #[serde(default)]
@@ -52,7 +57,8 @@ pub trait PlatformManifest {
     fn install_path(&self) -> Option<&str>;
     fn variable_sources(&self) -> Vec<&str>;
     fn files(&self) -> &[FileMapping];
-    fn rust_targets(&self) -> Vec<&'static str>;
+    fn icons(&self) -> &[IconMapping];
+    fn targets(&self) -> Vec<&'static str>;
 }
 
 impl PlatformManifest for PlatformConfig<'_> {
@@ -96,23 +102,34 @@ impl PlatformManifest for PlatformConfig<'_> {
         }
     }
 
-    fn rust_targets(&self) -> Vec<&'static str> {
+    fn icons(&self) -> &[IconMapping] {
         match self {
-            PlatformConfig::Windows(platform) => platform.rust_targets(),
-            PlatformConfig::Macos(platform) => platform.rust_targets(),
-            PlatformConfig::Linux(platform) => platform.rust_targets(),
+            PlatformConfig::Windows(platform) => platform.icons(),
+            PlatformConfig::Macos(platform) => platform.icons(),
+            PlatformConfig::Linux(platform) => platform.icons(),
+        }
+    }
+
+    fn targets(&self) -> Vec<&'static str> {
+        match self {
+            PlatformConfig::Windows(platform) => platform.targets(),
+            PlatformConfig::Macos(platform) => platform.targets(),
+            PlatformConfig::Linux(platform) => platform.targets(),
         }
     }
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct WindowsPlatform {
     #[serde(default)]
-    pub toolchains: Vec<WindowsToolchain>,
+    pub targets: Vec<WindowsTarget>,
     pub install_path: Option<String>,
     pub bin_dir: Option<String>,
     #[serde(default)]
     pub files: Vec<FileMapping>,
+    #[serde(default)]
+    pub icons: Vec<IconMapping>,
 }
 
 impl PlatformManifest for WindowsPlatform {
@@ -136,18 +153,20 @@ impl PlatformManifest for WindowsPlatform {
         &self.files
     }
 
-    fn rust_targets(&self) -> Vec<&'static str> {
-        self.toolchains
-            .iter()
-            .map(WindowsToolchain::rust_target)
-            .collect()
+    fn icons(&self) -> &[IconMapping] {
+        &self.icons
+    }
+
+    fn targets(&self) -> Vec<&'static str> {
+        self.targets.iter().map(WindowsTarget::target).collect()
     }
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MacosPlatform {
     #[serde(default)]
-    pub toolchains: Vec<MacosToolchain>,
+    pub targets: Vec<MacosTarget>,
     #[serde(default)]
     pub files: Vec<FileMapping>,
 }
@@ -173,18 +192,20 @@ impl PlatformManifest for MacosPlatform {
         &self.files
     }
 
-    fn rust_targets(&self) -> Vec<&'static str> {
-        self.toolchains
-            .iter()
-            .map(MacosToolchain::rust_target)
-            .collect()
+    fn icons(&self) -> &[IconMapping] {
+        &[]
+    }
+
+    fn targets(&self) -> Vec<&'static str> {
+        self.targets.iter().map(MacosTarget::target).collect()
     }
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct LinuxPlatform {
     #[serde(default)]
-    pub toolchains: Vec<LinuxToolchain>,
+    pub targets: Vec<LinuxTarget>,
     #[serde(default)]
     pub files: Vec<FileMapping>,
 }
@@ -210,22 +231,24 @@ impl PlatformManifest for LinuxPlatform {
         &self.files
     }
 
-    fn rust_targets(&self) -> Vec<&'static str> {
-        self.toolchains
-            .iter()
-            .map(LinuxToolchain::rust_target)
-            .collect()
+    fn icons(&self) -> &[IconMapping] {
+        &[]
+    }
+
+    fn targets(&self) -> Vec<&'static str> {
+        self.targets.iter().map(LinuxTarget::target).collect()
     }
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct FileMapping {
     pub source: String,
     pub destination: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
-pub enum WindowsToolchain {
+pub enum WindowsTarget {
     #[serde(rename = "x86_64-pc-windows-gnu")]
     X86_64PcWindowsGnu,
     #[serde(rename = "x86_64-pc-windows-msvc")]
@@ -236,47 +259,47 @@ pub enum WindowsToolchain {
     Aarch64PcWindowsMsvc,
 }
 
-impl WindowsToolchain {
-    pub fn rust_target(&self) -> &'static str {
+impl WindowsTarget {
+    pub fn target(&self) -> &'static str {
         match self {
-            WindowsToolchain::X86_64PcWindowsGnu => "x86_64-pc-windows-gnu",
-            WindowsToolchain::X86_64PcWindowsMsvc => "x86_64-pc-windows-msvc",
-            WindowsToolchain::Aarch64PcWindowsGnullvm => "aarch64-pc-windows-gnullvm",
-            WindowsToolchain::Aarch64PcWindowsMsvc => "aarch64-pc-windows-msvc",
+            WindowsTarget::X86_64PcWindowsGnu => "x86_64-pc-windows-gnu",
+            WindowsTarget::X86_64PcWindowsMsvc => "x86_64-pc-windows-msvc",
+            WindowsTarget::Aarch64PcWindowsGnullvm => "aarch64-pc-windows-gnullvm",
+            WindowsTarget::Aarch64PcWindowsMsvc => "aarch64-pc-windows-msvc",
         }
     }
 }
 
 #[derive(Debug, Clone, Deserialize)]
-pub enum MacosToolchain {
+pub enum MacosTarget {
     #[serde(rename = "x86_64-apple-darwin")]
     X86_64AppleDarwin,
     #[serde(rename = "aarch64-apple-darwin")]
     Aarch64AppleDarwin,
 }
 
-impl MacosToolchain {
-    pub fn rust_target(&self) -> &'static str {
+impl MacosTarget {
+    pub fn target(&self) -> &'static str {
         match self {
-            MacosToolchain::X86_64AppleDarwin => "x86_64-apple-darwin",
-            MacosToolchain::Aarch64AppleDarwin => "aarch64-apple-darwin",
+            MacosTarget::X86_64AppleDarwin => "x86_64-apple-darwin",
+            MacosTarget::Aarch64AppleDarwin => "aarch64-apple-darwin",
         }
     }
 }
 
 #[derive(Debug, Clone, Deserialize)]
-pub enum LinuxToolchain {
+pub enum LinuxTarget {
     #[serde(rename = "x86_64-unknown-linux-gnu")]
     X86_64UnknownLinuxGnu,
     #[serde(rename = "x86_64-unknown-linux-musl")]
     X86_64UnknownLinuxMusl,
 }
 
-impl LinuxToolchain {
-    pub fn rust_target(&self) -> &'static str {
+impl LinuxTarget {
+    pub fn target(&self) -> &'static str {
         match self {
-            LinuxToolchain::X86_64UnknownLinuxGnu => "x86_64-unknown-linux-gnu",
-            LinuxToolchain::X86_64UnknownLinuxMusl => "x86_64-unknown-linux-musl",
+            LinuxTarget::X86_64UnknownLinuxGnu => "x86_64-unknown-linux-gnu",
+            LinuxTarget::X86_64UnknownLinuxMusl => "x86_64-unknown-linux-musl",
         }
     }
 }

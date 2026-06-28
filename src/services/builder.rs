@@ -21,27 +21,27 @@ impl<'a> Builder<'a> {
         reset_build_dir(&build_dir)?;
 
         for platform in &self.build_manifest.platforms {
-            for toolchain in &platform.toolchains {
+            for target in &platform.targets {
                 let mut command = Command::new("cargo");
                 command.arg("build").arg("--release");
-                command.arg("--target").arg(&toolchain.toolchain);
+                command.arg("--target").arg(&target.target);
 
-                for package in &self.build_manifest.cargo.packages {
+                for package in &self.build_manifest.build.packages {
                     command.arg("--package").arg(package);
                 }
 
-                if !self.build_manifest.cargo.features.is_empty() {
+                if !self.build_manifest.build.features.is_empty() {
                     command
                         .arg("--features")
-                        .arg(self.build_manifest.cargo.features.join(" "));
+                        .arg(self.build_manifest.build.features.join(" "));
                 }
 
-                let status = command.status().with_context(|| {
-                    format!("failed to run cargo build for {}", toolchain.toolchain)
-                })?;
+                let status = command
+                    .status()
+                    .with_context(|| format!("failed to run cargo build for {}", target.target))?;
 
                 if !status.success() {
-                    bail!("cargo build failed for {}", toolchain.toolchain);
+                    bail!("cargo build failed for {}", target.target);
                 }
             }
         }

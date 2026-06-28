@@ -1,32 +1,29 @@
-use anyhow::{Context, Result, bail};
-use cargo_metadata::{MetadataCommand, TargetKind};
+use anyhow::{Context, Result};
 use serde::Serialize;
 
-use crate::services::manifest_file::{CrapManifest, FileMapping, PlatformManifest as _};
-use crate::services::toolchain_manifest::{
-    BuildVariable, PayloadFile, ToolchainManifest, resolve_destination, variables_from_files,
-    variables_from_value,
-};
+use crate::services::build_config_manifest::BuildConfigManifest;
+use crate::services::build_variable::{BuildVariable, platform_variables};
+use crate::services::cargo_package::CargoPackage;
+use crate::services::icons::{IconMapping, validate_icons};
+use crate::services::manifest_file::{CrapManifest, PlatformManifest as _};
+use crate::services::payload_file::{PayloadFile, payload_files};
+use crate::services::target_manifest::{TargetManifest, validate_target_supported};
 
 #[derive(Debug, Serialize)]
 pub struct BuildManifest {
     pub app_name: String,
     pub version: String,
-    pub cargo: CargoBuildManifest,
+    pub build: BuildConfigManifest,
     pub platforms: Vec<PlatformManifest>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct CargoBuildManifest {
-    pub packages: Vec<String>,
-    pub features: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct PlatformManifest {
     pub platform: String,
     pub variables: Vec<BuildVariable>,
-    pub toolchains: Vec<ToolchainManifest>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub icons: Vec<IconMapping>,
+    pub targets: Vec<TargetManifest>,
 }
 
 impl BuildManifest {
@@ -35,14 +32,15 @@ impl BuildManifest {
         let mut platforms = Vec::new();
 
         for platform in manifest.platforms() {
-            let files = payload_files(platform.files(), platform.install_path());
-            let mut toolchains = Vec::new();
+            let files = payload_files(platform.files(), platform.install_path())?;
+            validate_icons(platform.name(), platform.icons(), &cargo_package.binaries)?;
+            let mut targets = Vec::new();
             let variable_sources = platform.variable_sources();
 
-            for rust_target in platform.rust_targets() {
-                validate_toolchain_supported(rust_target)?;
-                toolchains.push(ToolchainManifest::new(
-                    rust_target,
+            for target in platform.targets() {
+                validate_target_supported(target)?;
+                targets.push(TargetManifest::new(
+                    target,
                     &cargo_package.binaries,
                     platform.install_path(),
                     platform.bin_dir(),
@@ -54,14 +52,15 @@ impl BuildManifest {
                 platform.name(),
                 &variable_sources,
                 &files,
-                toolchains,
+                platform.icons().to_vec(),
+                targets,
             )?);
         }
 
         Ok(Self {
             app_name: cargo_package.name,
             version: cargo_package.version,
-            cargo: CargoBuildManifest::from_crap_manifest(manifest),
+            build: BuildConfigManifest::from_crap_manifest(manifest),
             platforms,
         })
     }
@@ -81,12 +80,16 @@ impl BuildManifest {
         output.push_str(&format!("app: {}\n", self.app_name));
         output.push_str(&format!("version: {}\n", self.version));
 
-        if !self.cargo.packages.is_empty() {
-            output.push_str(&format!("packages: {}\n", self.cargo.packages.join(", ")));
+        if let Some(publisher) = &self.build.publisher {
+            output.push_str(&format!("publisher: {publisher}\n"));
         }
 
-        if !self.cargo.features.is_empty() {
-            output.push_str(&format!("features: {}\n", self.cargo.features.join(", ")));
+        if !self.build.packages.is_empty() {
+            output.push_str(&format!("packages: {}\n", self.build.packages.join(", ")));
+        }
+
+        if !self.build.features.is_empty() {
+            output.push_str(&format!("features: {}\n", self.build.features.join(", ")));
         }
 
         output.push_str("platforms:\n");
@@ -105,10 +108,14 @@ impl BuildManifest {
                 output.push_str(&format!("    variables: {variables}\n"));
             }
 
-            for toolchain in &platform.toolchains {
-                output.push_str(&format!("    {}\n", toolchain.toolchain));
+            for icon in &platform.icons {
+                output.push_str(&format!("    icon: {} -> {}\n", icon.binary, icon.source));
+            }
 
-                for file in &toolchain.files {
+            for target in &platform.targets {
+                output.push_str(&format!("    {}\n", target.target));
+
+                for file in &target.files {
                     let marker = if file.executable { "x" } else { "-" };
                     output.push_str(&format!(
                         "      [{}] {} -> {}\n",
@@ -119,36 +126,6 @@ impl BuildManifest {
         }
 
         output
-    }
-
-    #[allow(dead_code)]
-    pub fn variables_for_platform(&self, platform: &str) -> Option<Vec<&str>> {
-        self.platforms
-            .iter()
-            .find(|platform_manifest| platform_manifest.platform == platform)
-            .map(|platform_manifest| {
-                platform_manifest
-                    .variables
-                    .iter()
-                    .map(|variable| variable.name())
-                    .collect()
-            })
-    }
-}
-
-impl CargoBuildManifest {
-    fn from_crap_manifest(manifest: &CrapManifest) -> Self {
-        let Some(cargo) = &manifest.cargo else {
-            return Self {
-                packages: Vec::new(),
-                features: Vec::new(),
-            };
-        };
-
-        Self {
-            packages: cargo.packages.clone(),
-            features: cargo.features.clone(),
-        }
     }
 }
 
@@ -163,88 +140,14 @@ impl PlatformManifest {
         platform: &str,
         variable_sources: &[&str],
         files: &[PayloadFile],
-        toolchains: Vec<ToolchainManifest>,
+        icons: Vec<IconMapping>,
+        targets: Vec<TargetManifest>,
     ) -> Result<Self> {
         Ok(Self {
             platform: platform.to_owned(),
             variables: platform_variables(variable_sources, files)?,
-            toolchains,
-        })
-    }
-}
-
-fn platform_variables(
-    variable_sources: &[&str],
-    files: &[PayloadFile],
-) -> Result<Vec<BuildVariable>> {
-    let mut variables = variable_sources
-        .iter()
-        .flat_map(|value| variables_from_value(value))
-        .map(|name| BuildVariable::try_from(name.as_str()))
-        .collect::<Result<Vec<_>>>()?;
-
-    variables.extend(variables_from_files(files)?);
-    variables.sort();
-    variables.dedup();
-    Ok(variables)
-}
-
-fn payload_files(files: &[FileMapping], install_path: Option<&str>) -> Vec<PayloadFile> {
-    files
-        .iter()
-        .map(|file| {
-            PayloadFile::data(
-                file.source.clone(),
-                resolve_destination(install_path, &file.destination),
-            )
-        })
-        .collect()
-}
-
-fn validate_toolchain_supported(rust_target: &str) -> Result<()> {
-    if rust_target.ends_with("pc-windows-msvc") && !cfg!(target_os = "windows") {
-        bail!("{rust_target} can only be built on Windows");
-    }
-
-    if rust_target.ends_with("apple-darwin") && !cfg!(target_os = "macos") {
-        bail!("{rust_target} can only be built on macOS");
-    }
-
-    Ok(())
-}
-
-struct CargoPackage {
-    name: String,
-    version: String,
-    binaries: Vec<String>,
-}
-
-impl CargoPackage {
-    fn load() -> Result<Self> {
-        let metadata = MetadataCommand::new()
-            .no_deps()
-            .exec()
-            .context("failed to read cargo metadata")?;
-
-        let root_package = metadata
-            .root_package()
-            .context("failed to find root cargo package")?;
-
-        let binaries = root_package
-            .targets
-            .iter()
-            .filter(|target| target.kind.contains(&TargetKind::Bin))
-            .map(|target| target.name.to_string())
-            .collect::<Vec<_>>();
-
-        if binaries.is_empty() {
-            bail!("cargo package does not define any binary targets");
-        }
-
-        Ok(Self {
-            name: root_package.name.to_string(),
-            version: root_package.version.to_string(),
-            binaries,
+            icons,
+            targets,
         })
     }
 }

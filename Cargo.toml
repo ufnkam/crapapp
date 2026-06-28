@@ -5,6 +5,16 @@ edition = "2024"
 description = "CLI for building CRAP app installers and self-contained app bundles"
 license = "MIT OR Apache-2.0"
 
+[workspace]
+members = [
+    ".",
+    "example",
+    "templates/windows-installer-gui",
+    "templates/windows-installer-core",
+    "templates/windows-installer-cli",
+]
+resolver = "3"
+
 [[bin]]
 name = "cargo-crapapp"
 path = "src/main.rs"

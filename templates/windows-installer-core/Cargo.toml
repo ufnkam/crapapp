@@ -1,0 +1,7 @@
+[package]
+name = "crapapp-windows-installer-core"
+version = "0.1.0"
+edition = "2024"
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.55"

@@ -3,13 +3,14 @@
 All platform sections are optional. An empty `CRAP.toml` is valid and produces
 a build manifest with no platforms.
 
-## Cargo build selection
+## Build selection
 
-The optional `[cargo]` section controls which packages and features are passed
+The optional `[build]` section controls which packages and features are passed
 to `cargo build`.
 
 ```toml
-[cargo]
+[build]
+publisher = "Example Publisher"
 packages = ["example"]
 features = ["sqlite", "native-tls"]
 ```
@@ -17,19 +18,27 @@ features = ["sqlite", "native-tls"]
 Both lists are optional. Empty or missing lists mean no package or feature flags
 are added by crapapp.
 
+`publisher` is an optional `[build]` key. Windows setup writes the uninstall
+registry `Publisher` value only when this key is present. Signing certificate
+metadata can provide a better default later, but the installer no longer guesses
+publisher from the app name.
+
 ## Windows
 
-Windows supports GNU, GNU LLVM, and MSVC toolchains. MSVC can only be built on
+Windows supports GNU, GNU LLVM, and MSVC targets. MSVC can only be built on
 Windows.
 
 ```toml
 [windows]
-toolchains = [
+targets = [
     "x86_64-pc-windows-gnu",
 ]
 install_path = "$INSTALLPATH"
 files = [
     { source = "Cargo.toml", destination = "Cargo.toml" },
+]
+icons = [
+    { binary = "example", source = "assets/example.ico" },
 ]
 ```
 
@@ -37,19 +46,30 @@ files = [
 it in the build manifest. Variables such as `$INSTALLPATH` stay symbolic and are
 resolved later by the installer.
 
+The Windows setup executable accepts optional `--args ADD_TO_PATH=1` or
+`--args ADD_TO_PATH=0`. It defaults to `1`, so executable payload directories
+are added to the user `PATH` unless runtime setup args explicitly disable it.
+
 `bin_dir` is optional for Windows. If omitted, Cargo binaries are installed
 directly into `install_path` when `install_path` is present.
 
 ```toml
 [windows]
-toolchains = ["x86_64-pc-windows-gnu"]
+targets = ["x86_64-pc-windows-gnu"]
 install_path = "$INSTALLPATH"
 bin_dir = "bin"
 ```
 
 This places binaries under `$INSTALLPATH/bin`.
 
-Supported toolchains:
+`icons` is optional on Windows. Each icon is attached only to the Cargo binary
+target named by `binary`. The installer writes the uninstall registry
+`DisplayIcon` value to the installed binary matching the icon mapping. Generated
+`setup.exe` and `uninstall.exe` use template-owned Microsoft Fluent icons, not
+the configured app icon. SVG icons must be square and use one of the standard
+Windows icon sizes: 16, 24, 32, 48, 64, 128, or 256 px.
+
+Supported targets:
 
 - `x86_64-pc-windows-gnu`
 - `x86_64-pc-windows-msvc`
@@ -62,7 +82,7 @@ Linux self-contained apps always place Cargo binaries in `bin`.
 
 ```toml
 [linux]
-toolchains = [
+targets = [
     "x86_64-unknown-linux-gnu",
 ]
 files = [
@@ -70,7 +90,7 @@ files = [
 ]
 ```
 
-Supported toolchains:
+Supported targets:
 
 - `x86_64-unknown-linux-gnu`
 - `x86_64-unknown-linux-musl`
@@ -82,7 +102,7 @@ building `.app` bundles yet, so Cargo binaries go in `bin`.
 
 ```toml
 [macos]
-toolchains = [
+targets = [
     "x86_64-apple-darwin",
     "aarch64-apple-darwin",
 ]
@@ -91,7 +111,7 @@ files = [
 ]
 ```
 
-Supported toolchains:
+Supported targets:
 
 - `x86_64-apple-darwin`
 - `aarch64-apple-darwin`

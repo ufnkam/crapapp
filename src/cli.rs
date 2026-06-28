@@ -24,7 +24,7 @@ enum Command {
         #[arg(short, long, value_enum, default_value_t = OutputFormat::Text)]
         output: OutputFormat,
     },
-    /// Build configured cargo packages for configured platform toolchains.
+    /// Build configured cargo packages for configured platform targets.
     Build,
 }
 

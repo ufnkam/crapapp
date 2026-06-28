@@ -1,0 +1,11 @@
+[package]
+name = "crapapp-windows-gui-installer"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+crapapp-windows-installer-core = { path = "../windows-installer-core" }
+
+[[bin]]
+name = "gui-installer"
+path = "src/main.rs"
