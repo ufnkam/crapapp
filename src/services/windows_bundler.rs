@@ -8,21 +8,29 @@ use crate::services::build_manifest::{BuildManifest, PlatformManifest};
 use crate::services::build_variable::BuildVariable;
 use crate::services::payload_file::PayloadFile;
 
-const SETUP_CARGO_TOML: &str = include_str!("../../templates/windows-installer-cli/Cargo.toml");
-const SETUP_BUILD_RS: &str = include_str!("../../templates/windows-installer-cli/build.rs");
-const SETUP_RS: &str = include_str!("../../templates/windows-installer-cli/src/setup.rs");
-const UNINSTALL_RS: &str = include_str!("../../templates/windows-installer-cli/src/uninstall.rs");
-const GENERATED_RS: &str = include_str!("../../templates/windows-installer-cli/src/generated.rs");
-const CORE_CARGO_TOML: &str = include_str!("../../templates/windows-installer-core/Cargo.toml");
-const CORE_RS: &str = include_str!("../../templates/windows-installer-core/src/lib.rs");
-const CORE_CONFIG_RS: &str = include_str!("../../templates/windows-installer-core/src/config.rs");
-const CORE_CLI_RS: &str = include_str!("../../templates/windows-installer-core/src/cli.rs");
-const CORE_INSTALL_RS: &str = include_str!("../../templates/windows-installer-core/src/install.rs");
+const SETUP_CARGO_TOML: &str =
+    include_str!("../../embedded-templates/windows-installer-cli/Cargo.toml.template");
+const SETUP_BUILD_RS: &str =
+    include_str!("../../embedded-templates/windows-installer-cli/build.rs");
+const SETUP_RS: &str = include_str!("../../embedded-templates/windows-installer-cli/src/setup.rs");
+const UNINSTALL_RS: &str =
+    include_str!("../../embedded-templates/windows-installer-cli/src/uninstall.rs");
+const GENERATED_RS: &str =
+    include_str!("../../embedded-templates/windows-installer-cli/src/generated.rs");
+const CORE_CARGO_TOML: &str =
+    include_str!("../../embedded-templates/windows-installer-core/Cargo.toml.template");
+const CORE_RS: &str = include_str!("../../embedded-templates/windows-installer-core/src/lib.rs");
+const CORE_CONFIG_RS: &str =
+    include_str!("../../embedded-templates/windows-installer-core/src/config.rs");
+const CORE_CLI_RS: &str =
+    include_str!("../../embedded-templates/windows-installer-core/src/cli.rs");
+const CORE_INSTALL_RS: &str =
+    include_str!("../../embedded-templates/windows-installer-core/src/install.rs");
 const CORE_REGISTRY_RS: &str =
-    include_str!("../../templates/windows-installer-core/src/registry.rs");
+    include_str!("../../embedded-templates/windows-installer-core/src/registry.rs");
 const CORE_UNINSTALL_RS: &str =
-    include_str!("../../templates/windows-installer-core/src/uninstall.rs");
-const INSTALL_ICON: &[u8] = include_bytes!("../../templates/assets/install.ico");
+    include_str!("../../embedded-templates/windows-installer-core/src/uninstall.rs");
+const INSTALL_ICON: &[u8] = include_bytes!("../../embedded-templates/assets/install.ico");
 const GENERATED_WORKSPACE_PLACEHOLDER: &str = "# crapapp_template_generated_workspace!()";
 const GENERATED_CORE_DEPENDENCY_PLACEHOLDER: &str =
     r#"crapapp-windows-installer-core = { path = "../windows-installer-core" }"#;

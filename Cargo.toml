@@ -4,6 +4,16 @@ version = "0.1.0"
 edition = "2024"
 description = "CLI for building CRAP app installers and self-contained app bundles"
 license = "MIT OR Apache-2.0"
+readme = "README.md"
+include = [
+    "/Cargo.lock",
+    "/Cargo.toml",
+    "/LICENSE",
+    "/README.md",
+    "/configurations.md",
+    "/src/**/*",
+    "/embedded-templates/**/*",
+]
 
 [workspace]
 members = [
