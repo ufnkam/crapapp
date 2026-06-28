@@ -1,26 +1,30 @@
-[cargo]
+[build]
+publisher = "ufnkam"
 packages = ["example"]
 features = []
 
 [windows]
-toolchains = [
+targets = [
     "x86_64-pc-windows-gnu",
 ]
 install_path = "$INSTALLPATH"
 files = [
     { source = "Cargo.toml", destination = "manifests/Cargo.toml" },
+    { source = "some_assets", destination = "some_assets" },
+]
+icons = [
+    { binary = "example", source = "icon.ico" },
 ]
 
 # [linux]
-# toolchains = [
+# targets = [
 #     "x86_64-unknown-linux-gnu",
 # ]
 # files = [
 #     { source = "Cargo.toml", destination = "etc/example/Cargo.toml" },
 # ]
-
 # [macos]
-# toolchains = [
+# targets = [
 #     "x86_64-apple-darwin",
 #     "aarch64-apple-darwin",
 # ]
