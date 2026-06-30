@@ -22,6 +22,9 @@ include = [
     "/templates/windows-installer-gui/src/**/*",
 ]
 
+keywords = ["cargo", "packaging", "bundler", "installer", "desktop"]
+categories = ["command-line-utilities", "development-tools::cargo-plugins", "development-tools::build-utils"]
+
 [workspace]
 members = [
     ".",
@@ -48,3 +51,4 @@ serde_json = "1.0.150"
 strum = { version = "0.28.0", features = ["derive"] }
 strum_macros = "0.28.0"
 toml = "0.8.23"
+
