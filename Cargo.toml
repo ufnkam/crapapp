@@ -24,6 +24,7 @@ include = [
 
 keywords = ["cargo", "packaging", "bundler", "installer", "desktop"]
 categories = ["command-line-utilities", "development-tools::cargo-plugins", "development-tools::build-utils"]
+license = "Apache-2.0"
 
 [workspace]
 members = [
