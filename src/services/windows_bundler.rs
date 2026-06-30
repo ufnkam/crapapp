@@ -11,11 +11,11 @@ use crate::services::icons::IconMapping;
 use crate::services::payload_file::PayloadFile;
 use crate::services::platform_manifest::PlatformManifest;
 
-const SETUP_CARGO_TOML: &str = include_str!("../../templates/windows-installer-cli/Cargo.toml");
+const SETUP_CARGO_TOML: &str = include_str!("../../templates/windows-installer-cli/Cargo.toml.j2");
 const SETUP_BUILD_RS: &str = include_str!("../../templates/assets/build.rs.j2");
 const SETUP_RS: &str = include_str!("../../templates/windows-installer-cli/src/setup.rs");
 const UNINSTALL_RS: &str = include_str!("../../templates/windows-installer-cli/src/uninstall.rs");
-const CORE_CARGO_TOML: &str = include_str!("../../templates/windows-installer-core/Cargo.toml");
+const CORE_CARGO_TOML: &str = include_str!("../../templates/windows-installer-core/Cargo.toml.j2");
 const CORE_RS: &str = include_str!("../../templates/windows-installer-core/src/lib.rs");
 const CORE_CONFIG_RS: &str = include_str!("../../templates/windows-installer-core/src/config.rs");
 const CORE_CLI_RS: &str = include_str!("../../templates/windows-installer-core/src/cli.rs");
