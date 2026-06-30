@@ -1,31 +1,17 @@
-use anyhow::{Result, bail};
+use std::str::FromStr;
+
+use anyhow::{Context, Result};
 use serde::Serialize;
 
 use crate::services::payload_file::PayloadFile;
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(
+    Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, strum::EnumString, strum::Display,
+)]
 pub enum BuildVariable {
     #[serde(rename = "INSTALLPATH")]
+    #[strum(serialize = "INSTALLPATH")]
     InstallPath,
-}
-
-impl BuildVariable {
-    pub fn name(self) -> &'static str {
-        match self {
-            BuildVariable::InstallPath => "INSTALLPATH",
-        }
-    }
-}
-
-impl TryFrom<&str> for BuildVariable {
-    type Error = anyhow::Error;
-
-    fn try_from(value: &str) -> Result<Self> {
-        match value {
-            "INSTALLPATH" => Ok(BuildVariable::InstallPath),
-            unknown => bail!("unknown build variable ${unknown}"),
-        }
-    }
 }
 
 pub fn variables_from_files(files: &[PayloadFile]) -> Result<Vec<BuildVariable>> {
@@ -38,8 +24,11 @@ pub fn variables_from_files(files: &[PayloadFile]) -> Result<Vec<BuildVariable>>
             ]
         })
         .flatten()
-        .map(|name| BuildVariable::try_from(name.as_str()))
-        .collect::<Result<Vec<_>>>()?;
+        .map(|name| {
+            BuildVariable::from_str(&name)
+                .with_context(|| format!("Variable {} is not supported", name))
+        })
+        .collect::<Result<Vec<BuildVariable>>>()?;
 
     variables.sort();
     variables.dedup();
@@ -88,8 +77,11 @@ pub fn platform_variables(
     let mut variables = variable_sources
         .iter()
         .flat_map(|value| variables_from_value(value))
-        .map(|name| BuildVariable::try_from(name.as_str()))
-        .collect::<Result<Vec<_>>>()?;
+        .map(|name| {
+            BuildVariable::from_str(&name)
+                .with_context(|| format!("Variable {} is not supported", &name))
+        })
+        .collect::<Result<Vec<BuildVariable>>>()?;
 
     variables.extend(variables_from_files(files)?);
     variables.sort();

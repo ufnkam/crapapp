@@ -2,12 +2,12 @@ use anyhow::{Context, Result};
 use serde::Serialize;
 
 use crate::services::build_config_manifest::BuildConfigManifest;
-use crate::services::build_variable::{BuildVariable, platform_variables};
 use crate::services::cargo_package::CargoPackage;
-use crate::services::icons::{IconMapping, validate_icons};
+use crate::services::icons::validate_icons;
 use crate::services::manifest_file::{CrapManifest, PlatformManifest as _};
-use crate::services::payload_file::{PayloadFile, payload_files};
-use crate::services::target_manifest::{TargetManifest, validate_target_supported};
+use crate::services::payload_file::payload_files;
+use crate::services::platform_manifest::PlatformManifest;
+use crate::services::target_manifest::{TargetManifest};
 
 #[derive(Debug, Serialize)]
 pub struct BuildManifest {
@@ -15,15 +15,6 @@ pub struct BuildManifest {
     pub version: String,
     pub build: BuildConfigManifest,
     pub platforms: Vec<PlatformManifest>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct PlatformManifest {
-    pub platform: String,
-    pub variables: Vec<BuildVariable>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub icons: Vec<IconMapping>,
-    pub targets: Vec<TargetManifest>,
 }
 
 impl BuildManifest {
@@ -38,7 +29,6 @@ impl BuildManifest {
             let variable_sources = platform.variable_sources();
 
             for target in platform.targets() {
-                validate_target_supported(target)?;
                 targets.push(TargetManifest::new(
                     target,
                     &cargo_package.binaries,
@@ -101,7 +91,7 @@ impl BuildManifest {
                 let variables = platform
                     .variables
                     .iter()
-                    .map(|variable| variable.name())
+                    .map(|variable| variable.to_string())
                     .collect::<Vec<_>>()
                     .join(", ");
 
@@ -133,21 +123,4 @@ impl BuildManifest {
 pub enum BuildManifestFormatter {
     Text,
     Json,
-}
-
-impl PlatformManifest {
-    fn new(
-        platform: &str,
-        variable_sources: &[&str],
-        files: &[PayloadFile],
-        icons: Vec<IconMapping>,
-        targets: Vec<TargetManifest>,
-    ) -> Result<Self> {
-        Ok(Self {
-            platform: platform.to_owned(),
-            variables: platform_variables(variable_sources, files)?,
-            icons,
-            targets,
-        })
-    }
 }

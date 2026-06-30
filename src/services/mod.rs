@@ -8,6 +8,7 @@ mod manifest_file;
 mod payload_file;
 mod target_manifest;
 mod windows_bundler;
+mod platform_manifest;
 
 pub use build_manifest::{BuildManifest, BuildManifestFormatter};
 pub use builder::Builder;

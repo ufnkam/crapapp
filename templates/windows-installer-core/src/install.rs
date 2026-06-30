@@ -4,18 +4,15 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::config::{ADD_TO_PATH_VARIABLE, InstallerConfig, UNINSTALLER_EXE};
-use crate::registry::{
-    RegistryEntry, RegistryValue, registry_install_exists, write_registry_entries,
-};
-
-const PAYLOAD_KEY: u8 = 0xa5;
+use crate::registry::{RegistryEntry, RegistryValue, registry_install_exists};
+use crate::resolve_install_path;
 
 #[derive(Clone, Debug)]
 pub struct InstallPlan {
     pub install_root: PathBuf,
     pub uninstaller_path: PathBuf,
     pub existing: ExistingInstall,
-    payload_paths: Vec<PathBuf>,
+    pub payload_paths: Vec<PathBuf>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -35,8 +32,8 @@ pub fn validate_variables(
     config: &InstallerConfig,
     values: &HashMap<String, String>,
 ) -> Result<(), String> {
-    for required in config.required_variables {
-        if !values.contains_key(*required) {
+    for required in &config.required_variables {
+        if !values.contains_key(required) {
             return Err(format!(
                 "missing variable {required}. Pass it as --args {required}=<value>"
             ));
@@ -44,7 +41,12 @@ pub fn validate_variables(
     }
 
     for key in values.keys() {
-        if !config.required_variables.contains(&key.as_str()) && key != ADD_TO_PATH_VARIABLE {
+        if !config
+            .required_variables
+            .iter()
+            .any(|required| required == key)
+            && key != ADD_TO_PATH_VARIABLE
+        {
             return Err(format!("unknown variable {key}"));
         }
     }
@@ -56,12 +58,16 @@ pub fn install_plan(
     config: &InstallerConfig,
     variables: &HashMap<String, String>,
 ) -> Result<InstallPlan, String> {
-    let payload_paths = config
+    let payload_destinations = config
         .payload
         .iter()
-        .map(|entry| PathBuf::from(resolve_variables(entry.destination, variables)))
+        .map(|entry| resolve_variables(&entry.destination, variables))
         .collect::<Vec<_>>();
-    let install_root = install_root(variables, &payload_paths)?;
+    let install_root = install_root(variables, &payload_destinations)?;
+    let payload_paths = payload_destinations
+        .iter()
+        .map(|destination| resolve_install_path(destination.into(), &install_root))
+        .collect::<Vec<_>>();
     let existing = existing_install(config, &install_root);
     let uninstaller_path = install_root.join(UNINSTALLER_EXE);
 
@@ -101,72 +107,6 @@ pub fn prune_install_root(install_root: &Path, uninstaller_path: &Path) -> Resul
     Ok(())
 }
 
-pub fn install(
-    config: &InstallerConfig,
-    variables: &HashMap<String, String>,
-    plan: &InstallPlan,
-) -> Result<InstallReport, String> {
-    let mut installed_paths = Vec::new();
-
-    for (entry, path) in config.payload.iter().zip(plan.payload_paths.iter()) {
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)
-                .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
-        }
-
-        fs::write(path, decode_payload(entry.bytes))
-            .map_err(|error| format!("failed to write {}: {error}", path.display()))?;
-
-        #[cfg(unix)]
-        if entry.executable {
-            use std::os::unix::fs::PermissionsExt;
-
-            let mut permissions = fs::metadata(path)
-                .map_err(|error| format!("failed to read {} metadata: {error}", path.display()))?
-                .permissions();
-            permissions.set_mode(0o755);
-            fs::set_permissions(path, permissions)
-                .map_err(|error| format!("failed to chmod {}: {error}", path.display()))?;
-        }
-
-        installed_paths.push(path.clone());
-    }
-
-    fs::create_dir_all(&plan.install_root)
-        .map_err(|error| format!("failed to create {}: {error}", plan.install_root.display()))?;
-
-    fs::write(&plan.uninstaller_path, config.uninstaller_bytes).map_err(|error| {
-        format!(
-            "failed to write {}: {error}",
-            plan.uninstaller_path.display()
-        )
-    })?;
-    let estimated_size_kb = estimated_size_kb(&installed_paths, &plan.uninstaller_path)?;
-    let path_updated = add_to_path_requested(variables)?;
-
-    if path_updated {
-        add_user_path_entries(config, variables)?;
-    }
-
-    write_registry_entries(registry_entries(
-        config,
-        variables,
-        &plan.install_root,
-        &plan.uninstaller_path,
-        estimated_size_kb,
-    ))?;
-
-    Ok(InstallReport {
-        files: config.payload.len(),
-        estimated_size_kb,
-        path_updated,
-    })
-}
-
-fn decode_payload(bytes: &[u8]) -> Vec<u8> {
-    bytes.iter().map(|byte| byte ^ PAYLOAD_KEY).collect()
-}
-
 pub fn add_to_path_requested(values: &HashMap<String, String>) -> Result<bool, String> {
     values
         .get(ADD_TO_PATH_VARIABLE)
@@ -184,7 +124,7 @@ pub fn resolve_variables(value: &str, variables: &HashMap<String, String>) -> St
     resolved
 }
 
-fn parse_bool(value: &str) -> Result<bool, String> {
+pub fn parse_bool(value: &str) -> Result<bool, String> {
     match value {
         "1" => Ok(true),
         "0" => Ok(false),
@@ -196,14 +136,24 @@ fn parse_bool(value: &str) -> Result<bool, String> {
 
 fn install_root(
     variables: &HashMap<String, String>,
-    installed_paths: &[PathBuf],
+    installed_paths: &[String],
 ) -> Result<PathBuf, String> {
     if let Some(install_path) = variables.get("INSTALLPATH") {
-        return Ok(PathBuf::from(install_path));
+        return Ok(Path::new(install_path).components().collect::<PathBuf>());
     }
 
-    if let Some(parent) = installed_paths.first().and_then(|path| path.parent()) {
-        return Ok(parent.to_path_buf());
+    if let Some(parent) = installed_paths
+        .first()
+        .map(|path| Path::new(path).components().collect::<PathBuf>())
+        .and_then(|path| path.parent().map(PathBuf::from))
+    {
+        if parent.is_absolute() {
+            return Ok(parent);
+        }
+
+        return env::current_dir()
+            .map(|current_dir| current_dir.join(parent))
+            .map_err(|error| format!("failed to find current directory: {error}"));
     }
 
     env::current_dir().map_err(|error| format!("failed to find current directory: {error}"))
@@ -216,7 +166,10 @@ fn existing_install(config: &InstallerConfig, install_root: &Path) -> ExistingIn
     }
 }
 
-fn estimated_size_kb(installed_paths: &[PathBuf], uninstaller_path: &Path) -> Result<u32, String> {
+pub fn estimated_size_kb(
+    installed_paths: &[PathBuf],
+    uninstaller_path: &Path,
+) -> Result<u32, String> {
     let mut bytes = fs::metadata(uninstaller_path)
         .map_err(|error| {
             format!(
@@ -235,7 +188,7 @@ fn estimated_size_kb(installed_paths: &[PathBuf], uninstaller_path: &Path) -> Re
     Ok(bytes.div_ceil(1024).min(u32::MAX as u64) as u32)
 }
 
-fn registry_entries(
+pub fn registry_entries(
     config: &InstallerConfig,
     variables: &HashMap<String, String>,
     install_root: &Path,
@@ -279,7 +232,7 @@ fn registry_entries(
         },
     ];
 
-    if let Some(publisher) = config.publisher {
+    if let Some(publisher) = &config.publisher {
         entries.push(RegistryEntry {
             key: key.clone(),
             name: "Publisher",
@@ -287,11 +240,16 @@ fn registry_entries(
         });
     }
 
-    if let Some(display_icon) = config.app_display_icon {
+    if let Some(display_icon) = display_icon_destination(config) {
+        let vars = resolve_variables(display_icon, variables);
         entries.push(RegistryEntry {
             key,
             name: "DisplayIcon",
-            value: RegistryValue::String(resolve_variables(display_icon, variables)),
+            value: RegistryValue::String(
+                resolve_install_path(vars.into(), install_root)
+                    .display()
+                    .to_string(),
+            ),
         });
     }
 
@@ -299,17 +257,21 @@ fn registry_entries(
 }
 
 #[cfg(windows)]
-fn add_user_path_entries(
+pub fn add_user_path_entries(
     config: &InstallerConfig,
     variables: &HashMap<String, String>,
+    install_root: &Path,
 ) -> Result<(), String> {
     use winreg::RegKey;
     use winreg::enums::HKEY_CURRENT_USER;
 
-    let entries = config
-        .path_entries
-        .iter()
-        .map(|entry| resolve_variables(entry, variables))
+    let entries = path_entries(config)
+        .into_iter()
+        .map(|entry| {
+            let vars = resolve_variables(&entry, variables);
+            resolve_install_path(vars.into(), install_root)
+        })
+        .map(|entry| entry.display().to_string())
         .filter(|entry| !entry.is_empty())
         .collect::<Vec<_>>();
 
@@ -345,9 +307,57 @@ fn add_user_path_entries(
 }
 
 #[cfg(not(windows))]
-fn add_user_path_entries(
+pub fn add_user_path_entries(
     _config: &InstallerConfig,
     _variables: &HashMap<String, String>,
+    _install_root: &Path,
 ) -> Result<(), String> {
     Ok(())
+}
+
+#[cfg_attr(not(windows), allow(dead_code))]
+pub fn path_entries(config: &InstallerConfig) -> Vec<String> {
+    let mut entries = config
+        .payload
+        .iter()
+        .filter(|entry| entry.executable)
+        .filter_map(|entry| payload_parent(&entry.destination))
+        .collect::<Vec<_>>();
+    entries.sort();
+    entries.dedup();
+    entries
+}
+
+pub fn uninstall_entries(config: &InstallerConfig) -> Vec<&str> {
+    config
+        .payload
+        .iter()
+        .map(|entry| entry.destination.as_str())
+        .collect()
+}
+
+fn display_icon_destination(config: &InstallerConfig) -> Option<&str> {
+    config.icons.iter().find_map(|icon| {
+        let binary_file_name = format!("{}.exe", icon.binary);
+
+        config
+            .payload
+            .iter()
+            .find(|entry| {
+                let destination = Path::new(&entry.destination);
+                entry.executable
+                    && destination.file_name() == Some(std::ffi::OsStr::new(&binary_file_name))
+            })
+            .map(|entry| entry.destination.as_str())
+    })
+}
+
+#[cfg_attr(not(windows), allow(dead_code))]
+fn payload_parent(path: &str) -> Option<String> {
+    Path::new(path)
+        .components()
+        .collect::<PathBuf>()
+        .parent()
+        .and_then(|parent| (!parent.as_os_str().is_empty()).then_some(parent))
+        .map(|parent| parent.display().to_string())
 }

@@ -15,8 +15,8 @@ pub(crate) enum RegistryValue {
 
 #[cfg(windows)]
 pub(crate) fn registry_install_exists(config: &InstallerConfig) -> bool {
-    use winreg::RegKey;
     use winreg::enums::HKEY_CURRENT_USER;
+    use winreg::RegKey;
 
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
     hkcu.open_subkey(uninstall_registry_key(config)).is_ok()
@@ -29,8 +29,8 @@ pub(crate) fn registry_install_exists(_config: &InstallerConfig) -> bool {
 
 #[cfg(windows)]
 pub(crate) fn write_registry_entries(entries: Vec<RegistryEntry>) -> Result<(), String> {
-    use winreg::RegKey;
     use winreg::enums::HKEY_CURRENT_USER;
+    use winreg::RegKey;
 
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
 
@@ -59,8 +59,8 @@ pub(crate) fn write_registry_entries(_entries: Vec<RegistryEntry>) -> Result<(),
 
 #[cfg(windows)]
 pub(crate) fn remove_registry_key(config: &InstallerConfig) {
-    use winreg::RegKey;
     use winreg::enums::HKEY_CURRENT_USER;
+    use winreg::RegKey;
 
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
     let _ = hkcu.delete_subkey_all(uninstall_registry_key(config));

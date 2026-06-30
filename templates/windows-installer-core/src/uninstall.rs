@@ -1,72 +1,15 @@
-use std::env;
+use std::borrow::Cow;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::config::InstallerConfig;
-use crate::registry::remove_registry_key;
+use crate::install::uninstall_entries;
 
-#[derive(Clone, Copy, Debug)]
-pub struct UninstallOptions {
-    pub keep_path: bool,
-}
-
-#[derive(Clone, Copy, Debug)]
-pub struct UninstallReport {
-    pub files: usize,
-    pub path_removed: bool,
-}
-
-pub fn uninstall(
-    config: &InstallerConfig,
-    options: UninstallOptions,
-) -> Result<UninstallReport, String> {
-    let current_exe =
-        env::current_exe().map_err(|error| format!("failed to find uninstaller path: {error}"))?;
-    let install_root = current_exe
-        .parent()
-        .map(PathBuf::from)
-        .ok_or_else(|| "failed to find uninstaller directory".to_owned())?;
-
-    let mut files = 0;
-    for path in config
-        .uninstall_entries
-        .iter()
-        .rev()
-        .map(|entry| resolve_install_path(entry, &install_root))
-    {
-        if path == current_exe {
-            continue;
-        }
-
-        if path.exists() {
-            fs::remove_file(&path)
-                .map_err(|error| format!("failed to remove {}: {error}", path.display()))?;
-            files += 1;
-        }
-    }
-
-    remove_created_directories(config, &install_root);
-
-    let path_removed = if options.keep_path {
-        false
-    } else {
-        remove_user_path_entries(config, &install_root)
-    };
-
-    remove_registry_key(config);
-
-    Ok(UninstallReport {
-        files,
-        path_removed,
-    })
-}
-
-fn remove_created_directories(config: &InstallerConfig, install_root: &Path) {
-    let mut directories = config
-        .uninstall_entries
-        .iter()
+pub fn remove_created_directories(config: &InstallerConfig, install_root: &Path) {
+    let mut directories = uninstall_entries(config)
+        .into_iter()
         .filter_map(|entry| {
-            resolve_install_path(entry, install_root)
+            resolve_install_path(entry.into(), install_root)
                 .parent()
                 .map(PathBuf::from)
         })
@@ -80,14 +23,15 @@ fn remove_created_directories(config: &InstallerConfig, install_root: &Path) {
     }
 }
 
-fn resolve_install_path(value: &str, install_root: &Path) -> PathBuf {
+pub fn resolve_install_path(value: Cow<'_, str>, install_root: &Path) -> PathBuf {
     let install_root = install_root.display().to_string();
-
-    if value.contains("$INSTALLPATH") {
-        return PathBuf::from(value.replace("$INSTALLPATH", &install_root));
-    }
-
-    let path = PathBuf::from(value);
+    let value = value.into_owned();
+    let value = if value.contains("$INSTALLPATH") {
+        value.replace("$INSTALLPATH", &install_root)
+    } else {
+        value.to_owned()
+    };
+    let path = Path::new(&value).components().collect::<PathBuf>();
 
     if path.is_absolute() {
         path
@@ -97,15 +41,14 @@ fn resolve_install_path(value: &str, install_root: &Path) -> PathBuf {
 }
 
 #[cfg(windows)]
-fn remove_user_path_entries(config: &InstallerConfig, install_root: &Path) -> bool {
+pub fn remove_user_path_entries(config: &InstallerConfig, install_root: &Path) -> bool {
     use winreg::RegKey;
     use winreg::enums::HKEY_CURRENT_USER;
 
-    let entries = config
-        .path_entries
-        .iter()
+    let entries = crate::install::path_entries(config)
+        .into_iter()
         .map(|entry| {
-            resolve_install_path(entry, install_root)
+            resolve_install_path(entry.into(), install_root)
                 .display()
                 .to_string()
         })
@@ -137,6 +80,6 @@ fn remove_user_path_entries(config: &InstallerConfig, install_root: &Path) -> bo
 }
 
 #[cfg(not(windows))]
-fn remove_user_path_entries(_config: &InstallerConfig, _install_root: &Path) -> bool {
+pub fn remove_user_path_entries(_config: &InstallerConfig, _install_root: &Path) -> bool {
     false
 }

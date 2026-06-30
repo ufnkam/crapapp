@@ -1,7 +1,7 @@
 [build]
 publisher = "ufnkam"
 packages = ["example"]
-features = []
+features = ["some_feature"]
 
 [windows]
 targets = [
@@ -13,7 +13,7 @@ files = [
     { source = "some_assets", destination = "some_assets" },
 ]
 icons = [
-    { binary = "example", source = "icon.ico" },
+    { binary = "example", source = "build_assets/icon.ico" },
 ]
 
 # [linux]

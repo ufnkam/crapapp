@@ -1,20 +1,16 @@
-#![cfg_attr(windows, windows_subsystem = "windows")]
-
 use std::process;
 
 use clap::Parser;
-use crapapp_windows_installer_core::{UninstallOptions, cli};
+use windows_installer_core::{InstallerConfig, cli};
 
-mod generated;
+const SETUP_CONFIG: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/setup-config.json"));
+const PAYLOAD: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/payload.bin"));
+const UNINSTALLER: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/uninstall.exe"));
 
 #[derive(Debug, Parser)]
 #[command(name = "uninstall")]
 #[command(about = "Uninstall the packaged application")]
-struct Cli {
-    /// Keep PATH entries even if the installer added them.
-    #[arg(long)]
-    keep_path: bool,
-}
+struct Cli {}
 
 fn main() {
     if let Err(error) = run() {
@@ -24,11 +20,11 @@ fn main() {
 }
 
 fn run() -> Result<(), String> {
-    let args = Cli::parse();
-    cli::uninstall(
-        &generated::CONFIG,
-        UninstallOptions {
-            keep_path: args.keep_path,
-        },
-    )
+    let _args = Cli::parse();
+    let config = installer_config()?;
+    cli::uninstall(&config)
+}
+
+fn installer_config() -> Result<InstallerConfig, String> {
+    windows_installer_core::installer_config(SETUP_CONFIG, PAYLOAD, UNINSTALLER)
 }

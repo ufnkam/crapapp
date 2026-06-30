@@ -1,6 +1,6 @@
 [package]
 name = "cargo-crapapp"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "CLI for building CRAP app installers and self-contained app bundles"
 license = "MIT OR Apache-2.0"
@@ -12,7 +12,14 @@ include = [
     "/README.md",
     "/configurations.md",
     "/src/**/*",
-    "/embedded-templates/**/*",
+    "/templates/assets/**/*",
+    "/templates/windows-installer-cli/Cargo.toml",
+    "/templates/windows-installer-cli/build.rs",
+    "/templates/windows-installer-cli/src/**/*",
+    "/templates/windows-installer-core/Cargo.toml",
+    "/templates/windows-installer-core/src/**/*",
+    "/templates/windows-installer-gui/Cargo.toml",
+    "/templates/windows-installer-gui/src/**/*",
 ]
 
 [workspace]
@@ -22,6 +29,9 @@ members = [
     "templates/windows-installer-gui",
     "templates/windows-installer-core",
     "templates/windows-installer-cli",
+]
+exclude = [
+    "example/.crapapp_build",
 ]
 resolver = "3"
 

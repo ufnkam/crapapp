@@ -6,7 +6,17 @@ use clap::Parser;
 struct Cli {}
 
 fn main() {
-    let _cli = Cli::parse();
+    println!("Hello and burn this world!");
 
-    println!("Hello, world!");
+    #[cfg(feature = "some_feature")]
+    {
+        println!("I'm using some_feature!")
+    }
+
+    #[cfg(not(feature = "some_feature"))]
+    {
+        println!("I'm not using some_feature!")
+    }
+
+    let _cli = Cli::parse();
 }

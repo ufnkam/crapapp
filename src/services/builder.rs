@@ -17,13 +17,16 @@ impl<'a> Builder<'a> {
     }
 
     pub fn build(&self) -> Result<()> {
-        let build_dir = PathBuf::from(".crapapp_build");
+        let build_root = build_root()?;
+        let build_dir = build_root.join(".crapapp_build");
         reset_build_dir(&build_dir)?;
 
         for platform in &self.build_manifest.platforms {
             for target in &platform.targets {
                 let mut command = Command::new("cargo");
+                command.current_dir(&build_root);
                 command.arg("build").arg("--release");
+                command.arg("--target-dir").arg(&build_root.join("target"));
                 command.arg("--target").arg(&target.target);
 
                 for package in &self.build_manifest.build.packages {
@@ -57,6 +60,10 @@ impl<'a> Builder<'a> {
 
         Ok(())
     }
+}
+
+fn build_root() -> Result<PathBuf> {
+    std::env::current_dir().context("failed to resolve current directory")
 }
 
 fn reset_build_dir(build_dir: &Path) -> Result<()> {

@@ -1,4 +1,3 @@
-use anyhow::{Result, bail};
 use serde::Serialize;
 
 use crate::services::payload_file::{PayloadFile, join_payload_path, resolve_destination};
@@ -49,14 +48,3 @@ fn binary_file_name(target: &str, binary_name: &str) -> String {
     }
 }
 
-pub fn validate_target_supported(target: &str) -> Result<()> {
-    if target.ends_with("pc-windows-msvc") && !cfg!(target_os = "windows") {
-        bail!("{target} can only be built on Windows");
-    }
-
-    if target.ends_with("apple-darwin") && !cfg!(target_os = "macos") {
-        bail!("{target} can only be built on macOS");
-    }
-
-    Ok(())
-}

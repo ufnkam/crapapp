@@ -1,15 +1,15 @@
 [package]
-name = "crapapp-windows-setup"
+name = "windows-installer-cli"
 version = "0.1.0"
 edition = "2024"
 
-# crapapp_template_generated_workspace!()
-
 [dependencies]
 clap = { version = "4.5.40", features = ["derive"] }
-crapapp-windows-installer-core = { path = "../windows-installer-core" }
+windows-installer-core = { path = "../windows-installer-core" }
 
 [build-dependencies]
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.150"
 winresource = "0.1.23"
 
 [[bin]]
@@ -19,3 +19,5 @@ path = "src/setup.rs"
 [[bin]]
 name = "uninstall"
 path = "src/uninstall.rs"
+
+# crapapp_template_generated_workspace!()

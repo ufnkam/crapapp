@@ -2,49 +2,35 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
+use serde::Serialize;
 
-use crate::services::build_manifest::{BuildManifest, PlatformManifest};
+use crate::services::build_manifest::BuildManifest;
 use crate::services::build_variable::BuildVariable;
+use crate::services::icons::IconMapping;
 use crate::services::payload_file::PayloadFile;
+use crate::services::platform_manifest::PlatformManifest;
 
-const SETUP_CARGO_TOML: &str =
-    include_str!("../../embedded-templates/windows-installer-cli/Cargo.toml.template");
-const SETUP_BUILD_RS: &str =
-    include_str!("../../embedded-templates/windows-installer-cli/build.rs");
-const SETUP_RS: &str = include_str!("../../embedded-templates/windows-installer-cli/src/setup.rs");
-const UNINSTALL_RS: &str =
-    include_str!("../../embedded-templates/windows-installer-cli/src/uninstall.rs");
-const GENERATED_RS: &str =
-    include_str!("../../embedded-templates/windows-installer-cli/src/generated.rs");
-const CORE_CARGO_TOML: &str =
-    include_str!("../../embedded-templates/windows-installer-core/Cargo.toml.template");
-const CORE_RS: &str = include_str!("../../embedded-templates/windows-installer-core/src/lib.rs");
-const CORE_CONFIG_RS: &str =
-    include_str!("../../embedded-templates/windows-installer-core/src/config.rs");
-const CORE_CLI_RS: &str =
-    include_str!("../../embedded-templates/windows-installer-core/src/cli.rs");
-const CORE_INSTALL_RS: &str =
-    include_str!("../../embedded-templates/windows-installer-core/src/install.rs");
+const SETUP_CARGO_TOML: &str = include_str!("../../templates/windows-installer-cli/Cargo.toml");
+const SETUP_BUILD_RS: &str = include_str!("../../templates/assets/build.rs.j2");
+const SETUP_RS: &str = include_str!("../../templates/windows-installer-cli/src/setup.rs");
+const UNINSTALL_RS: &str = include_str!("../../templates/windows-installer-cli/src/uninstall.rs");
+const CORE_CARGO_TOML: &str = include_str!("../../templates/windows-installer-core/Cargo.toml");
+const CORE_RS: &str = include_str!("../../templates/windows-installer-core/src/lib.rs");
+const CORE_CONFIG_RS: &str = include_str!("../../templates/windows-installer-core/src/config.rs");
+const CORE_CLI_RS: &str = include_str!("../../templates/windows-installer-core/src/cli.rs");
+const CORE_INSTALL_RS: &str = include_str!("../../templates/windows-installer-core/src/install.rs");
 const CORE_REGISTRY_RS: &str =
-    include_str!("../../embedded-templates/windows-installer-core/src/registry.rs");
+    include_str!("../../templates/windows-installer-core/src/registry.rs");
 const CORE_UNINSTALL_RS: &str =
-    include_str!("../../embedded-templates/windows-installer-core/src/uninstall.rs");
-const INSTALL_ICON: &[u8] = include_bytes!("../../embedded-templates/assets/install.ico");
+    include_str!("../../templates/windows-installer-core/src/uninstall.rs");
+const INSTALL_ICON: &[u8] = include_bytes!("../../templates/assets/install.ico");
 const GENERATED_WORKSPACE_PLACEHOLDER: &str = "# crapapp_template_generated_workspace!()";
 const GENERATED_CORE_DEPENDENCY_PLACEHOLDER: &str =
-    r#"crapapp-windows-installer-core = { path = "../windows-installer-core" }"#;
+    r#"windows-installer-core = { path = "../windows-installer-core" }"#;
 const GENERATED_CORE_DEPENDENCY: &str =
-    r#"crapapp-windows-installer-core = { path = "windows-installer-core" }"#;
-const PAYLOAD_SOURCE_PLACEHOLDER: &str = "crapapp_template_payload_source!()";
-const APP_NAME_PLACEHOLDER: &str = "crapapp_template_app_name!()";
-const APP_VERSION_PLACEHOLDER: &str = "crapapp_template_app_version!()";
-const APP_PUBLISHER_PLACEHOLDER: &str = "crapapp_template_app_publisher!()";
-const APP_DISPLAY_ICON_PLACEHOLDER: &str = "crapapp_template_app_display_icon!()";
-const REQUIRED_VARIABLES_PLACEHOLDER: &str = "// crapapp_template_required_variables!()";
-const UNINSTALLER_SOURCE_PLACEHOLDER: &str = "crapapp_template_uninstaller_bytes!()";
-const UNINSTALL_ENTRIES_PLACEHOLDER: &str = "// crapapp_template_uninstall_entries!()";
-const PATH_ENTRIES_PLACEHOLDER: &str = "// crapapp_template_path_entries!()";
+    r#"windows-installer-core = { path = "windows-installer-core" }"#;
+const SETUP_CONFIG: &str = "setup-config.json";
 
 pub struct WindowsBundler<'a> {
     build_manifest: &'a BuildManifest,
@@ -63,10 +49,13 @@ impl<'a> WindowsBundler<'a> {
         let windows = self.windows_platform()?;
 
         for target in &windows.targets {
-            let output_dir = self.build_dir.join("windows").join(&target.target);
+            let output_dir = self.build_dir.join(&windows.platform).join(&target.target);
             let setup_source_dir = output_dir.join("setup-src");
+            let setup_output = output_dir.join("setup.exe");
 
             remove_dir_if_exists(&setup_source_dir)?;
+            fs::create_dir_all(&output_dir)
+                .with_context(|| format!("failed to create {}", output_dir.display()))?;
             fs::create_dir_all(setup_source_dir.join("src")).with_context(|| {
                 format!(
                     "failed to create setup project at {}",
@@ -78,7 +67,7 @@ impl<'a> WindowsBundler<'a> {
             self.build_uninstaller(&target.target, &setup_source_dir)?;
             self.write_setup_rs_with_uninstaller(windows, &target.target, &setup_source_dir)?;
             self.build_setup(&target.target, &setup_source_dir)?;
-            self.copy_setup_output(&target.target, &setup_source_dir, &output_dir)?;
+            self.copy_setup_output(&target.target, &setup_source_dir, &setup_output)?;
             self.clean_setup_source(&setup_source_dir)?;
         }
 
@@ -105,10 +94,10 @@ impl<'a> WindowsBundler<'a> {
 
         fs::write(setup_source_dir.join("Cargo.toml"), setup_cargo_toml())
             .with_context(|| "failed to write setup Cargo.toml")?;
-        fs::write(setup_source_dir.join("build.rs"), setup_build_rs(files)?)
+        fs::write(setup_source_dir.join("build.rs"), SETUP_BUILD_RS)
             .with_context(|| "failed to write setup build.rs")?;
         self.write_core_project(setup_source_dir)?;
-        self.write_generated_rs(platform, files, "", setup_source_dir)?;
+        self.write_setup_build_input(platform, files, None, setup_source_dir)?;
         write_setup_assets(setup_source_dir)?;
         fs::write(setup_source_dir.join("src").join("setup.rs"), SETUP_RS)
             .with_context(|| "failed to write setup.rs")?;
@@ -173,17 +162,14 @@ impl<'a> WindowsBundler<'a> {
             .find(|target_manifest| target_manifest.target == target)
             .context("failed to find target manifest")?;
 
-        fs::write(
-            setup_source_dir.join("build.rs"),
-            setup_build_rs(&target_manifest.files)?,
-        )
-        .with_context(|| "failed to write setup build.rs with embedded uninstaller payload")?;
+        fs::write(setup_source_dir.join("build.rs"), SETUP_BUILD_RS)
+            .with_context(|| "failed to write setup build.rs with embedded uninstaller payload")?;
 
         self.write_core_project(setup_source_dir)?;
-        self.write_generated_rs(
+        self.write_setup_build_input(
             platform,
             &target_manifest.files,
-            &embedded_uninstaller.display().to_string(),
+            Some(&embedded_uninstaller),
             setup_source_dir,
         )?;
 
@@ -196,8 +182,11 @@ impl<'a> WindowsBundler<'a> {
     fn write_core_project(&self, setup_source_dir: &Path) -> Result<()> {
         let core_dir = setup_source_dir.join("windows-installer-core");
         let core_src_dir = core_dir.join("src");
+        let assets_dir = setup_source_dir.join("assets");
         fs::create_dir_all(&core_src_dir)
             .with_context(|| format!("failed to create {}", core_src_dir.display()))?;
+        fs::create_dir_all(&assets_dir)
+            .with_context(|| format!("failed to create {}", assets_dir.display()))?;
         fs::write(core_dir.join("Cargo.toml"), CORE_CARGO_TOML)
             .with_context(|| "failed to write installer core Cargo.toml")?;
         fs::write(core_src_dir.join("lib.rs"), CORE_RS)
@@ -216,27 +205,29 @@ impl<'a> WindowsBundler<'a> {
         Ok(())
     }
 
-    fn write_generated_rs(
+    fn write_setup_build_input(
         &self,
         platform: &PlatformManifest,
         files: &[PayloadFile],
-        uninstaller_source: &str,
+        uninstaller_source: Option<&Path>,
         setup_source_dir: &Path,
     ) -> Result<()> {
-        let display_icon = display_icon_destination(platform, files);
+        let setup_config = SetupInstallerConfig::new(
+            &self.build_manifest.app_name,
+            &self.build_manifest.version,
+            self.build_manifest.build.publisher.as_deref(),
+            &platform.icons,
+            &platform.variables,
+            uninstaller_source,
+            files,
+        )?;
+
         fs::write(
-            setup_source_dir.join("src").join("generated.rs"),
-            generated_rs(
-                &self.build_manifest.app_name,
-                &self.build_manifest.version,
-                self.build_manifest.build.publisher.as_deref(),
-                display_icon.as_deref(),
-                &platform.variables,
-                uninstaller_source,
-                files,
-            ),
+            setup_source_dir.join(SETUP_CONFIG),
+            serde_json::to_string_pretty(&setup_config)
+                .context("failed to serialize setup config")?,
         )
-        .with_context(|| "failed to write installer generated.rs")?;
+        .with_context(|| "failed to write setup config")?;
 
         Ok(())
     }
@@ -266,9 +257,9 @@ impl<'a> WindowsBundler<'a> {
         &self,
         target: &str,
         setup_source_dir: &Path,
-        output_dir: &Path,
+        output_file: &Path,
     ) -> Result<()> {
-        copy_release_exe(target, setup_source_dir, output_dir, "setup")
+        copy_release_exe(target, setup_source_dir, output_file, "setup")
     }
 
     fn clean_setup_source(&self, setup_source_dir: &Path) -> Result<()> {
@@ -292,11 +283,15 @@ fn remove_dir_if_exists(path: &Path) -> Result<()> {
 fn copy_release_exe(
     target: &str,
     setup_source_dir: &Path,
-    output_dir: &Path,
+    output_file: &Path,
     name: &str,
 ) -> Result<()> {
     let source = release_exe_path(target, setup_source_dir, name);
-    let destination = output_dir.join(format!("{name}.exe"));
+    let destination = if output_file.extension().is_some() {
+        output_file.to_path_buf()
+    } else {
+        output_file.join(format!("{name}.exe"))
+    };
 
     fs::copy(&source, &destination).with_context(|| {
         format!(
@@ -326,12 +321,6 @@ fn setup_cargo_toml() -> String {
         )
 }
 
-fn setup_build_rs(files: &[PayloadFile]) -> Result<String> {
-    let payload = payload_source(files)?;
-
-    Ok(SETUP_BUILD_RS.replace(PAYLOAD_SOURCE_PLACEHOLDER, &payload))
-}
-
 fn write_setup_assets(setup_source_dir: &Path) -> Result<()> {
     let assets_dir = setup_source_dir.join("assets");
     fs::create_dir_all(&assets_dir)
@@ -342,136 +331,62 @@ fn write_setup_assets(setup_source_dir: &Path) -> Result<()> {
     Ok(())
 }
 
-fn payload_source(files: &[PayloadFile]) -> Result<String> {
-    let mut source = String::from("{\n");
-    source
-        .push_str("    let out_dir = Path::new(&env::var(\"OUT_DIR\").unwrap()).to_path_buf();\n");
-    source.push_str(
-        "    let mut payload = String::from(\"static PAYLOAD: &[PayloadEntry] = &[\\n\");\n",
-    );
+#[derive(Debug, Serialize)]
+struct SetupInstallerConfig {
+    app_name: String,
+    app_version: String,
+    publisher: Option<String>,
+    variables: Vec<String>,
+    uninstaller_source: String,
+    payload: Vec<SetupPayloadFile>,
+    icons: Vec<IconMapping>,
+}
 
-    for (index, file) in files.iter().enumerate() {
-        let source_path = fs::canonicalize(&file.source)
-            .with_context(|| format!("failed to find payload source {}", &file.source))?;
-        let payload_file_name = format!("payload-{index}.bin");
+#[derive(Debug, Serialize)]
+struct SetupPayloadFile {
+    source: String,
+    destination: String,
+    executable: bool,
+}
 
-        source.push_str(&format!(
-            "    let bytes = fs::read(\"{}\").unwrap();\n",
-            source_path.to_string_lossy().escape_default(),
-        ));
-        source.push_str(&format!(
-            "    fs::write(out_dir.join(\"{}\"), encode_payload(&bytes)).unwrap();\n",
-            payload_file_name.escape_default(),
-        ));
-        source.push_str(&format!(
-            "    payload.push_str(\"    PayloadEntry {{ destination: \\\"{}\\\", executable: {}, bytes: include_bytes!(concat!(env!(\\\"OUT_DIR\\\"), \\\"/{}\\\")) }},\\n\");\n",
-            file.destination.escape_default(),
-            file.executable,
-            payload_file_name.escape_default(),
-        ));
+impl SetupInstallerConfig {
+    fn new(
+        app_name: &str,
+        app_version: &str,
+        publisher: Option<&str>,
+        icons: &[IconMapping],
+        variables: &[BuildVariable],
+        uninstaller_source: Option<&Path>,
+        files: &[PayloadFile],
+    ) -> Result<Self> {
+        Ok(Self {
+            app_name: app_name.to_owned(),
+            app_version: app_version.to_owned(),
+            publisher: publisher.map(str::to_owned),
+            variables: variables.iter().map(ToString::to_string).collect(),
+            uninstaller_source: uninstaller_source
+                .map(|path| path.display().to_string())
+                .unwrap_or_default(),
+            payload: files
+                .iter()
+                .map(SetupPayloadFile::try_from)
+                .collect::<Result<Vec<_>>>()?,
+            icons: icons.to_vec(),
+        })
     }
-
-    source.push_str("    payload.push_str(\"];\\n\");\n");
-    source.push_str("    payload\n");
-    source.push('}');
-
-    Ok(source)
 }
 
-fn generated_rs(
-    app_name: &str,
-    app_version: &str,
-    publisher: Option<&str>,
-    display_icon: Option<&str>,
-    variables: &[BuildVariable],
-    uninstaller_source: &str,
-    files: &[PayloadFile],
-) -> String {
-    let required_variables = variables
-        .iter()
-        .map(|variable| variable.name())
-        .map(|name| format!("\"{}\"", name.escape_default()))
-        .collect::<Vec<_>>()
-        .join(", ");
-    let mut path_entries = files
-        .iter()
-        .filter(|file| file.executable)
-        .filter_map(|file| payload_parent(&file.destination))
-        .map(|entry| format!("\"{}\"", entry.escape_default()))
-        .collect::<Vec<_>>();
-    path_entries.sort();
-    path_entries.dedup();
-    let path_entries = path_entries.join(", ");
-    let uninstall_entries = files
-        .iter()
-        .map(|file| format!("\"{}\"", file.destination.escape_default()))
-        .collect::<Vec<_>>()
-        .join(", ");
-    let uninstaller_bytes = if uninstaller_source.is_empty() {
-        "&[]".to_owned()
-    } else {
-        format!(
-            "include_bytes!(\"{}\")",
-            uninstaller_source.escape_default()
-        )
-    };
+impl TryFrom<&PayloadFile> for SetupPayloadFile {
+    type Error = anyhow::Error;
 
-    GENERATED_RS
-        .replace(
-            APP_NAME_PLACEHOLDER,
-            &format!("\"{}\"", app_name.escape_default()),
-        )
-        .replace(
-            APP_VERSION_PLACEHOLDER,
-            &format!("\"{}\"", app_version.escape_default()),
-        )
-        .replace(
-            APP_PUBLISHER_PLACEHOLDER,
-            &match publisher {
-                Some(value) => format!("Some(\"{}\")", value.escape_default()),
-                None => "None".to_owned(),
-            },
-        )
-        .replace(
-            APP_DISPLAY_ICON_PLACEHOLDER,
-            &match display_icon {
-                Some(value) => format!("Some(\"{}\")", value.escape_default()),
-                None => "None".to_owned(),
-            },
-        )
-        .replace(REQUIRED_VARIABLES_PLACEHOLDER, &required_variables)
-        .replace(UNINSTALL_ENTRIES_PLACEHOLDER, &uninstall_entries)
-        .replace(PATH_ENTRIES_PLACEHOLDER, &path_entries)
-        .replace(UNINSTALLER_SOURCE_PLACEHOLDER, &uninstaller_bytes)
-}
+    fn try_from(file: &PayloadFile) -> Result<Self> {
+        let source = fs::canonicalize(&file.source)
+            .with_context(|| format!("failed to find payload source {}", &file.source))?;
 
-fn display_icon_destination(platform: &PlatformManifest, files: &[PayloadFile]) -> Option<String> {
-    platform.icons.iter().find_map(|icon| {
-        let binary_file_name = format!("{}.exe", &icon.binary);
-
-        files
-            .iter()
-            .find(|file| {
-                let dest_path = Path::new(&file.destination);
-                file.executable
-                    && dest_path.file_name() == Some(std::ffi::OsStr::new(&binary_file_name))
-            })
-            .map(|file| file.destination.clone())
-    })
-}
-
-fn payload_parent(path: &str) -> Option<String> {
-    let parent = Path::new(path).parent()?;
-
-    if parent.as_os_str().is_empty() {
-        None
-    } else {
-        Some(
-            parent
-                .components()
-                .map(|component| component.as_os_str().to_string_lossy())
-                .collect::<Vec<_>>()
-                .join("/"),
-        )
+        Ok(Self {
+            source: source.display().to_string(),
+            destination: file.destination.clone(),
+            executable: file.executable,
+        })
     }
 }

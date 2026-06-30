@@ -1,7 +1,11 @@
 [package]
-name = "crapapp-windows-installer-core"
+name = "windows-installer-core"
 version = "0.1.0"
 edition = "2024"
 
+[dependencies]
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.150"
+
 [target.'cfg(windows)'.dependencies]
-winreg = "0.55"
+winreg = "0.56.0"
