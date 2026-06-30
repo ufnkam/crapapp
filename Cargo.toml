@@ -3,7 +3,7 @@ name = "cargo-crapapp"
 version = "0.1.2"
 edition = "2024"
 description = "CLI for building CRAP app installers and self-contained app bundles"
-license = "MIT OR Apache-2.0"
+license = "Apache-2.0"
 readme = "README.md"
 include = [
     "/Cargo.lock",
@@ -24,7 +24,6 @@ include = [
 
 keywords = ["cargo", "packaging", "bundler", "installer", "desktop"]
 categories = ["command-line-utilities", "development-tools::cargo-plugins", "development-tools::build-utils"]
-license = "Apache-2.0"
 
 [workspace]
 members = [
