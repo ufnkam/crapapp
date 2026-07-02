@@ -12,9 +12,8 @@ files = [
     { source = "Cargo.toml", destination = "manifests/Cargo.toml" },
     { source = "some_assets", destination = "some_assets" },
 ]
-icons = [
-    { binary = "example", source = "build_assets/icon.ico" },
-]
+display_icon = "build_assets/icon.ico"
+installer = "gui"
 
 # [linux]
 # targets = [

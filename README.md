@@ -22,7 +22,7 @@ teams and producing 2534 Jira tickets.
 - Per-user Windows uninstall registry entry.
 - Per-user `PATH` updates through `HKCU\Environment`.
 - Installer-time `ADD_TO_PATH` variable for PATH updates.
-- Windows icon wiring for configured app binaries and uninstall registry display icons.
+- Windows uninstall registry `DisplayIcon` wiring to one configured app binary.
 - Microsoft Fluent icons for generated setup/uninstall executables.
 - `inspect` command with text and JSON output.
 

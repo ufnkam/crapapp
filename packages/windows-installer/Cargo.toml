@@ -1,0 +1,20 @@
+[package]
+name = "windows-installer"
+version = "0.2.0"
+edition = "2024"
+description = "Runtime library for CRAP app Windows installers"
+license = "Apache-2.0"
+
+[features]
+default = []
+cli = ["dep:clap"]
+gui = ["dep:iced"]
+
+[dependencies]
+clap = { version = "4.5.40", features = ["derive"], optional = true }
+iced = { version = "0.14.0", features = ["image-without-codecs"], optional = true }
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.150"
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.56.0"

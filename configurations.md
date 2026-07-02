@@ -37,9 +37,7 @@ install_path = "$INSTALLPATH"
 files = [
     { source = "Cargo.toml", destination = "Cargo.toml" },
 ]
-icons = [
-    { binary = "example", source = "assets/example.ico" },
-]
+display_icon = "assets/example.ico"
 ```
 
 `install_path` is optional. If present, relative destinations are prefixed with
@@ -62,12 +60,14 @@ bin_dir = "bin"
 
 This places binaries under `$INSTALLPATH/bin`.
 
-`icons` is optional on Windows. Each icon is attached only to the Cargo binary
-target named by `binary`. The installer writes the uninstall registry
-`DisplayIcon` value to the installed binary matching the icon mapping. Generated
-`setup.exe` and `uninstall.exe` use template-owned Microsoft Fluent icons, not
-the configured app icon. SVG icons must be square and use one of the standard
-Windows icon sizes: 16, 24, 32, 48, 64, 128, or 256 px.
+`display_icon` is optional on Windows. It names the icon source file to validate
+and enables uninstall registry `DisplayIcon` wiring to the installed app
+executable. The client app must embed this icon into its executable, for example
+from its own `build.rs`; cargo-crapapp does not modify built application
+binaries or copy the icon file into the install tree. Generated `setup.exe` and
+`uninstall.exe` use template-owned Microsoft Fluent icons. SVG icons must be
+square and use one of the standard Windows icon sizes: 16, 24, 32, 48, 64, 128,
+or 256 px.
 
 Supported targets:
 
