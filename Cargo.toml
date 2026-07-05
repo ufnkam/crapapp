@@ -1,39 +1,26 @@
 [package]
 name = "cargo-crapapp"
-version = "0.1.2"
+version = "0.2.0"
 edition = "2024"
-description = "CLI for building CRAP app installers and self-contained app bundles"
+description = "Cargo subcommand for building CRAP app installers and self-contained app bundles"
 license = "Apache-2.0"
 readme = "README.md"
-include = [
-    "/Cargo.lock",
-    "/Cargo.toml",
-    "/LICENSE",
-    "/README.md",
-    "/configurations.md",
-    "/src/**/*",
-    "/templates/assets/**/*",
-    "/templates/windows-installer-cli/Cargo.toml.j2",
-    "/templates/windows-installer-cli/build.rs",
-    "/templates/windows-installer-cli/src/**/*",
-    "/templates/windows-installer-core/Cargo.toml.j2",
-    "/templates/windows-installer-core/src/**/*",
-    "/templates/windows-installer-gui/Cargo.toml.j2",
-    "/templates/windows-installer-gui/src/**/*",
-]
-
 keywords = ["cargo", "packaging", "bundler", "installer", "desktop"]
-categories = ["command-line-utilities", "development-tools::cargo-plugins", "development-tools::build-utils"]
+categories = [
+    "command-line-utilities",
+    "development-tools::cargo-plugins",
+    "development-tools::build-utils",
+]
+repository = "https://github.com/ufnkam/crapapp"
 
 [workspace]
-members = [
-    ".",
-    "example",
-]
-exclude = [
-    "example/.crapapp_build",
-]
+members = ["example", "packages/cargoapp", "packages/windows-installer"]
+exclude = ["example/.crapapp_build"]
 resolver = "3"
+
+[lib]
+name = "cargo_crapapp"
+path = "src/lib.rs"
 
 [[bin]]
 name = "cargo-crapapp"
@@ -41,10 +28,4 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = "1.0.103"
-cargo_metadata = "0.23.1"
-clap = { version = "4.5.40", features = ["derive"] }
-serde = { version = "1.0.219", features = ["derive"] }
-serde_json = "1.0.150"
-strum = { version = "0.28.0", features = ["derive"] }
-strum_macros = "0.28.0"
-toml = "0.8.23"
+cargoapp = { version = "0.2.0", path = "packages/cargoapp" }

@@ -1,11 +1,11 @@
 # cargo-crapapp
 
-Cargo plugin for bundling multiplatform Rust apps from `CRAP.toml`.
+Cargo plugin for bundling multiplatform Rust apps from `CRAP.toml` without external dependencies like wixl or nsis.
 
 It exists because some enterprise environments, especially in banking, are very
 good at inventing security rituals and very bad at understanding what is
-actually secure. Sometimes Artifactory is missing, nobody owns Linux package
-distribution, Windows packaging tools are blocked or are piece of sh*t.
+actually secure. Sometimes Artifactory meatadata is missing, nobody owns Linux package
+distribution or Windows packaging tools are blocked.
 
 The goal is simple: read a manifest, build Rust binaries for configured
 targets, and produce something a user can install without negotiating with five
@@ -22,7 +22,7 @@ teams and producing 2534 Jira tickets.
 - Per-user Windows uninstall registry entry.
 - Per-user `PATH` updates through `HKCU\Environment`.
 - Installer-time `ADD_TO_PATH` variable for PATH updates.
-- Windows icon wiring for configured app binaries and uninstall registry display icons.
+- Windows uninstall registry `DisplayIcon` wiring to one configured app binary.
 - Microsoft Fluent icons for generated setup/uninstall executables.
 - `inspect` command with text and JSON output.
 
