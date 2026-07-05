@@ -1,11 +1,11 @@
 # cargo-crapapp
 
-Cargo plugin for bundling multiplatform Rust apps from `CRAP.toml`.
+Cargo plugin for bundling multiplatform Rust apps from `CRAP.toml` without external dependencies like wixl or nsis.
 
 It exists because some enterprise environments, especially in banking, are very
 good at inventing security rituals and very bad at understanding what is
-actually secure. Sometimes Artifactory is missing, nobody owns Linux package
-distribution, Windows packaging tools are blocked or are piece of sh*t.
+actually secure. Sometimes Artifactory meatadata is missing, nobody owns Linux package
+distribution or Windows packaging tools are blocked.
 
 The goal is simple: read a manifest, build Rust binaries for configured
 targets, and produce something a user can install without negotiating with five
