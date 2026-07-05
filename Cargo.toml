@@ -28,4 +28,4 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = "1.0.103"
-cargoapp = { version = "0.2.0", path = "packages/cargoapp" }
+crapapp = { version = "0.2.0", path = "packages/cargoapp" }
