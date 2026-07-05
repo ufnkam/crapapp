@@ -2,18 +2,12 @@
 name = "example"
 version = "0.1.0"
 edition = "2024"
-autobins = false
-
-[[bin]]
-name = "first-bin"
-path = "src/bin/first_bin.rs"
-
-[[bin]]
-name = "second-bin"
-path = "src/bin/second_bin.rs"
 
 [features]
 some_feature = []
 
 [dependencies]
 clap = { version = "4.5.40", features = ["derive"] }
+
+[build-dependencies]
+winresource = "0.1.23"

@@ -1,3 +1,3 @@
 fn main() {
-    println!("Hello from binary 2");
+    println!("Hello from binary 2")
 }
