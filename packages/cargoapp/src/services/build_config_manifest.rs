@@ -6,6 +6,8 @@ use crate::services::manifest_file::CrapManifest;
 pub struct BuildConfigManifest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub publisher: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
     pub packages: Vec<String>,
     pub features: Vec<String>,
 }
@@ -15,6 +17,7 @@ impl BuildConfigManifest {
         let Some(build) = &manifest.build else {
             return Self {
                 publisher: None,
+                display_name: None,
                 packages: Vec::new(),
                 features: Vec::new(),
             };
@@ -22,6 +25,7 @@ impl BuildConfigManifest {
 
         Self {
             publisher: build.publisher.clone(),
+            display_name: build.display_name.clone(),
             packages: build.packages.clone(),
             features: build.features.clone(),
         }

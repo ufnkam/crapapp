@@ -1,7 +1,9 @@
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Screen {
     Action,
+    Eula(usize),
     Settings,
+    UninstallSettings,
     Process(Process),
     Exit(String),
 }
@@ -14,7 +16,7 @@ pub enum Process {
 }
 
 impl Process {
-    pub fn progress_label(self) -> &'static str {
+    pub fn action_label(self) -> &'static str {
         match self {
             Self::Installation => "Installing",
             Self::Uninstallation => "Uninstalling",

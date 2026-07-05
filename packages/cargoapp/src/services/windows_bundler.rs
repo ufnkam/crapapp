@@ -3,10 +3,12 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{Context, Result, bail};
+use image::ImageReader;
 use minijinja::{Environment, context};
 use serde_json::{Value, json};
 
 use crate::services::build_manifest::BuildManifest;
+use crate::services::manifest_file::{EulaFile, WindowsInstaller};
 use crate::services::payload_file::PayloadFile;
 use crate::services::platform_manifest::PlatformManifest;
 
@@ -17,6 +19,7 @@ const UNINSTALL_RS: &str = include_str!("../../assets/windows-installer/uninstal
 const INSTALL_ICON: &[u8] = include_bytes!("../../assets/windows-installer/install.ico");
 const WINDOWS_INSTALLER_VERSION: &str = "0.2.0";
 const SETUP_CONFIG: &str = "setup-config.json";
+const DISPLAY_ICON_SIZE: u32 = 256;
 
 pub struct WindowsBundler<'a> {
     build_manifest: &'a BuildManifest,
@@ -89,15 +92,15 @@ impl<'a> WindowsBundler<'a> {
         )
         .with_context(|| "failed to write setup build.rs")?;
         self.write_setup_build_input(platform, files, None, setup_source_dir)?;
-        write_setup_assets(setup_source_dir)?;
+        write_setup_assets(setup_source_dir, platform.display_icon_source.as_deref())?;
         fs::write(
             setup_source_dir.join("src").join("main.rs"),
-            render_static_template("main.rs.j2", SETUP_RS)?,
+            render_setup_template("main.rs.j2", SETUP_RS, platform)?,
         )
         .with_context(|| "failed to write setup main.rs")?;
         fs::write(
             setup_source_dir.join("src").join("uninstall.rs"),
-            render_static_template("uninstall.rs.j2", UNINSTALL_RS)?,
+            render_setup_template("uninstall.rs.j2", UNINSTALL_RS, platform)?,
         )
         .with_context(|| "failed to write uninstall.rs")?;
 
@@ -182,6 +185,7 @@ impl<'a> WindowsBundler<'a> {
         let setup_config = json!({
             "app_name": self.build_manifest.app_name,
             "app_version": self.build_manifest.version,
+            "display_name": self.build_manifest.build.display_name,
             "publisher": self.build_manifest.build.publisher,
             "variables": platform.variables.iter().map(ToString::to_string).collect::<Vec<_>>(),
             "uninstaller_source": uninstaller_source
@@ -192,6 +196,12 @@ impl<'a> WindowsBundler<'a> {
                 .map(setup_payload_file)
                 .collect::<Result<Vec<_>>>()?,
             "display_icon": platform.display_icon,
+            "display_icon_rgba": setup_display_icon(platform.display_icon_source.as_deref())?,
+            "associated_files": platform.associated_files,
+            "eulas": platform.eulas
+                .iter()
+                .map(setup_eula_file)
+                .collect::<Result<Vec<_>>>()?,
         });
 
         fs::write(
@@ -310,6 +320,22 @@ fn render_static_template(name: &str, source: &str) -> Result<String> {
         .with_context(|| format!("failed to render {name} template"))
 }
 
+fn render_setup_template(name: &str, source: &str, platform: &PlatformManifest) -> Result<String> {
+    let environment = Environment::new();
+    let template = environment
+        .template_from_str(source)
+        .with_context(|| format!("failed to parse {name} template"))?;
+
+    template
+        .render(context! {
+            gui_installer => matches!(
+                platform.installer.unwrap_or_default(),
+                WindowsInstaller::Gui
+            ),
+        })
+        .with_context(|| format!("failed to render {name} template"))
+}
+
 fn windows_installer_dependency(platform: &PlatformManifest) -> Result<WindowsInstallerDependency> {
     let cargoapp_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
     let windows_installer_dir = cargoapp_dir
@@ -337,12 +363,28 @@ struct WindowsInstallerDependency {
     build: String,
 }
 
-fn write_setup_assets(setup_source_dir: &Path) -> Result<()> {
+fn write_setup_assets(setup_source_dir: &Path, display_icon_source: Option<&str>) -> Result<()> {
     let assets_dir = setup_source_dir.join("assets");
     fs::create_dir_all(&assets_dir)
         .with_context(|| format!("failed to create {}", assets_dir.display()))?;
-    fs::write(assets_dir.join("install.ico"), INSTALL_ICON)
-        .with_context(|| "failed to write setup install icon")?;
+    let install_icon = assets_dir.join("install.ico");
+    if let Some(display_icon_source) = display_icon_source.filter(|source| {
+        Path::new(source)
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("ico"))
+    }) {
+        fs::copy(display_icon_source, &install_icon).with_context(|| {
+            format!(
+                "failed to copy display icon {} to {}",
+                display_icon_source,
+                install_icon.display()
+            )
+        })?;
+    } else {
+        fs::write(&install_icon, INSTALL_ICON)
+            .with_context(|| "failed to write setup install icon")?;
+    }
 
     Ok(())
 }
@@ -356,4 +398,54 @@ fn setup_payload_file(file: &PayloadFile) -> Result<Value> {
         "destination": file.destination,
         "executable": file.executable,
     }))
+}
+
+fn setup_eula_file(eula: &EulaFile) -> Result<Value> {
+    let path = Path::new(eula.path());
+    let text = fs::read_to_string(path)
+        .with_context(|| format!("failed to read EULA file {}", path.display()))?;
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or_else(|| eula.path());
+
+    Ok(json!({
+        "name": name,
+        "text": text,
+        "required": eula.required(),
+    }))
+}
+
+fn setup_display_icon(source: Option<&str>) -> Result<Option<Value>> {
+    let Some(source) = source else {
+        return Ok(None);
+    };
+    let path = Path::new(source);
+    let supported = path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| {
+            extension.eq_ignore_ascii_case("ico") || extension.eq_ignore_ascii_case("png")
+        });
+
+    if !supported {
+        return Ok(None);
+    }
+
+    let icon = ImageReader::open(path)
+        .with_context(|| format!("failed to open display icon {}", path.display()))?
+        .decode()
+        .with_context(|| format!("failed to decode display icon {}", path.display()))?
+        .resize_exact(
+            DISPLAY_ICON_SIZE,
+            DISPLAY_ICON_SIZE,
+            image::imageops::FilterType::Lanczos3,
+        )
+        .to_rgba8();
+
+    Ok(Some(json!({
+        "width": DISPLAY_ICON_SIZE,
+        "height": DISPLAY_ICON_SIZE,
+        "rgba": icon.into_raw(),
+    })))
 }

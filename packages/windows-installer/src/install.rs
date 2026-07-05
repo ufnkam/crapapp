@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 use std::env;
-use std::fs;
+use std::fs::{self, OpenOptions};
 use std::path::{Path, PathBuf};
 
-use crate::config::{ADD_TO_PATH_VARIABLE, InstallerConfig, UNINSTALLER_EXE};
+use crate::config::{ADD_TO_PATH_VARIABLE, AssociatedFileKind, InstallerConfig, UNINSTALLER_EXE};
 use crate::registry::{RegistryEntry, RegistryValue, registry_install_exists};
 use crate::resolve_install_path;
 
@@ -188,6 +188,39 @@ pub fn estimated_size_kb(
     Ok(bytes.div_ceil(1024).min(u32::MAX as u64) as u32)
 }
 
+pub fn create_associated_files(
+    config: &InstallerConfig,
+    variables: &HashMap<String, String>,
+    install_root: &Path,
+) -> Result<(), String> {
+    for entry in &config.associated_files {
+        let vars = resolve_variables(&entry.path, variables);
+        let path = resolve_install_path(vars.into(), install_root);
+
+        match entry.kind {
+            AssociatedFileKind::File => {
+                if let Some(parent) = path.parent() {
+                    fs::create_dir_all(parent).map_err(|error| {
+                        format!("failed to create {}: {error}", parent.display())
+                    })?;
+                }
+
+                OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&path)
+                    .map_err(|error| format!("failed to create {}: {error}", path.display()))?;
+            }
+            AssociatedFileKind::Directory => {
+                fs::create_dir_all(&path)
+                    .map_err(|error| format!("failed to create {}: {error}", path.display()))?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
 pub fn registry_entries(
     config: &InstallerConfig,
     variables: &HashMap<String, String>,
@@ -203,7 +236,12 @@ pub fn registry_entries(
         RegistryEntry {
             key: key.clone(),
             name: "DisplayName",
-            value: RegistryValue::String(config.app_name.to_owned()),
+            value: RegistryValue::String(
+                config
+                    .display_name
+                    .clone()
+                    .unwrap_or_else(|| config.app_name.to_owned()),
+            ),
         },
         RegistryEntry {
             key: key.clone(),

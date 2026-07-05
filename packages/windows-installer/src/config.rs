@@ -32,9 +32,38 @@ impl PayloadEntry {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct AssociatedFile {
+    pub path: String,
+    pub kind: AssociatedFileKind,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AssociatedFileKind {
+    File,
+    Directory,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Eula {
+    pub name: String,
+    pub text: String,
+    #[serde(default = "default_true")]
+    pub required: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct DisplayIcon {
+    pub width: u32,
+    pub height: u32,
+    pub rgba: Vec<u8>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct InstallerConfig {
     pub app_name: String,
     pub app_version: String,
+    pub display_name: Option<String>,
     pub publisher: Option<String>,
     #[serde(rename = "variables")]
     pub required_variables: Vec<String>,
@@ -44,6 +73,15 @@ pub struct InstallerConfig {
     pub uninstaller_bytes: &'static [u8],
     pub payload: Vec<PayloadEntry>,
     pub display_icon: Option<String>,
+    pub display_icon_rgba: Option<DisplayIcon>,
+    #[serde(default)]
+    pub associated_files: Vec<AssociatedFile>,
+    #[serde(default)]
+    pub eulas: Vec<Eula>,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl Default for InstallerConfig {
@@ -51,17 +89,38 @@ impl Default for InstallerConfig {
         Self {
             app_name: "template-app".to_owned(),
             app_version: "0.0.0".to_owned(),
+            display_name: None,
             publisher: None,
             required_variables: Vec::new(),
             uninstaller_source: String::new(),
             uninstaller_bytes: &[],
             payload: Vec::new(),
             display_icon: None,
+            display_icon_rgba: None,
+            associated_files: Vec::new(),
+            eulas: Vec::new(),
         }
     }
 }
 
 impl InstallerConfig {
+    pub fn install_app_name(&self) -> &str {
+        let app_name = self.app_name.trim();
+
+        if app_name.is_empty() {
+            "windows-installer"
+        } else {
+            app_name
+        }
+    }
+
+    pub fn publisher_name(&self) -> Option<&str> {
+        self.publisher
+            .as_deref()
+            .map(str::trim)
+            .filter(|publisher| !publisher.is_empty())
+    }
+
     pub fn new(
         config: &'static [u8],
         payload: &'static [u8],

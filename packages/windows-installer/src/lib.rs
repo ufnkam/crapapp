@@ -13,9 +13,15 @@ mod uninstall;
 #[cfg(any(feature = "cli", feature = "gui"))]
 pub mod uninstaller;
 
-pub use config::{ADD_TO_PATH_VARIABLE, InstallerConfig, PayloadEntry, UNINSTALLER_EXE};
-pub use install::{
-    ExistingInstall, InstallPlan, InstallReport, add_to_path_requested, install_plan,
-    prune_install_root, resolve_variables, validate_variables,
+pub use config::{
+    ADD_TO_PATH_VARIABLE, AssociatedFile, AssociatedFileKind, Eula, InstallerConfig, PayloadEntry,
+    UNINSTALLER_EXE,
 };
-pub use uninstall::{remove_created_directories, remove_user_path_entries, resolve_install_path};
+pub use install::{
+    ExistingInstall, InstallPlan, InstallReport, add_to_path_requested, create_associated_files,
+    install_plan, prune_install_root, resolve_variables, validate_variables,
+};
+pub use uninstall::{
+    remove_associated_files, remove_created_directories, remove_user_path_entries,
+    resolve_install_path,
+};

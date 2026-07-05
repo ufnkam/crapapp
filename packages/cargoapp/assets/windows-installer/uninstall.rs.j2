@@ -1,3 +1,7 @@
+{% if gui_installer -%}
+#![cfg_attr(windows, windows_subsystem = "windows")]
+
+{% endif -%}
 use std::process;
 
 const SETUP_CONFIG: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/setup-config.json"));

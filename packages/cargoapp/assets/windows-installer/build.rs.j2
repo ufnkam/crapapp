@@ -67,12 +67,16 @@ fn write_payload(config: &InstallerConfig, out_dir: &Path) -> InstallerConfig {
     InstallerConfig {
         app_name: config.app_name.clone(),
         app_version: config.app_version.clone(),
+        display_name: config.display_name.clone(),
         publisher: config.publisher.clone(),
         required_variables: config.required_variables.clone(),
         uninstaller_source: String::new(),
         uninstaller_bytes: &[],
         payload,
         display_icon: config.display_icon.clone(),
+        display_icon_rgba: config.display_icon_rgba.clone(),
+        associated_files: config.associated_files.clone(),
+        eulas: config.eulas.clone(),
     }
 }
 

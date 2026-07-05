@@ -1,10 +1,13 @@
 use crate::config::InstallerConfig;
 use crate::install::{
-    add_user_path_entries, estimated_size_kb, install_plan, prune_install_root, registry_entries,
-    uninstall_entries,
+    add_user_path_entries, create_associated_files, estimated_size_kb, install_plan,
+    prune_install_root, registry_entries, uninstall_entries,
 };
 use crate::registry::{remove_registry_key, write_registry_entries};
-use crate::{add_to_path_requested, remove_created_directories, resolve_install_path};
+use crate::{
+    add_to_path_requested, remove_associated_files, remove_created_directories,
+    resolve_install_path,
+};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::io::Write;
@@ -56,18 +59,6 @@ pub fn install(
         fs::write(path, entry.bytes)
             .map_err(|error| format!("failed to write {}: {error}", path.display()))?;
 
-        #[cfg(unix)]
-        if entry.executable {
-            use std::os::unix::fs::PermissionsExt;
-
-            let mut permissions = fs::metadata(path)
-                .map_err(|error| format!("failed to read {} metadata: {error}", path.display()))?
-                .permissions();
-            permissions.set_mode(0o755);
-            fs::set_permissions(path, permissions)
-                .map_err(|error| format!("failed to chmod {}: {error}", path.display()))?;
-        }
-
         installed_paths.push(path.clone());
     }
 
@@ -87,6 +78,8 @@ pub fn install(
         add_user_path_entries(config, variables, &plan.install_root)?;
         println!("Updated user PATH.");
     }
+
+    create_associated_files(config, variables, &plan.install_root)?;
 
     write_registry_entries(registry_entries(
         config,
@@ -128,6 +121,10 @@ pub fn uninstall(config: &InstallerConfig) -> Result<(), String> {
             fs::remove_file(&path)
                 .map_err(|error| format!("failed to remove {}: {error}", path.display()))?;
         }
+    }
+
+    if !config.associated_files.is_empty() && confirm("Remove associated files?")? {
+        remove_associated_files(config, &install_root)?;
     }
 
     remove_created_directories(config, &install_root);

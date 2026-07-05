@@ -2,7 +2,7 @@ use std::borrow::Cow;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::config::InstallerConfig;
+use crate::config::{AssociatedFileKind, InstallerConfig};
 use crate::install::uninstall_entries;
 
 pub fn remove_created_directories(config: &InstallerConfig, install_root: &Path) {
@@ -21,6 +21,28 @@ pub fn remove_created_directories(config: &InstallerConfig, install_root: &Path)
     for directory in directories.iter().rev() {
         let _ = fs::remove_dir(directory);
     }
+}
+
+pub fn remove_associated_files(
+    config: &InstallerConfig,
+    install_root: &Path,
+) -> Result<(), String> {
+    for entry in config.associated_files.iter().rev() {
+        let path = resolve_install_path(Cow::from(entry.path.as_str()), install_root);
+
+        if !path.exists() {
+            continue;
+        }
+
+        match entry.kind {
+            AssociatedFileKind::File => fs::remove_file(&path)
+                .map_err(|error| format!("failed to remove {}: {error}", path.display()))?,
+            AssociatedFileKind::Directory => fs::remove_dir_all(&path)
+                .map_err(|error| format!("failed to remove {}: {error}", path.display()))?,
+        }
+    }
+
+    Ok(())
 }
 
 pub fn resolve_install_path(value: Cow<'_, str>, install_root: &Path) -> PathBuf {

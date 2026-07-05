@@ -1,5 +1,6 @@
 [build]
 publisher = "ufnkam"
+display_name = "Example App"
 packages = ["example"]
 features = ["some_feature"]
 
@@ -11,6 +12,14 @@ install_path = "$INSTALLPATH"
 files = [
     { source = "Cargo.toml", destination = "manifests/Cargo.toml" },
     { source = "some_assets", destination = "some_assets" },
+]
+associated_files = [
+    { path = "$INSTALLPATH/saves", kind = "directory" },
+    { path = "$INSTALLPATH/settings.json", kind = "file" },
+]
+eulas = [
+    { path = "EULA.txt" },
+    { path = "EULA2.txt", required = false },
 ]
 display_icon = "build_assets/icon.ico"
 installer = "gui"

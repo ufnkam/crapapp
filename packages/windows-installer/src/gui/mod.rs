@@ -1,9 +1,13 @@
-mod action;
+mod action_screen;
 mod app;
-mod exit;
+mod assets;
+mod eula_screen;
+mod exit_screen;
 pub mod installer;
-mod process;
+mod process_screen;
 mod screens;
-mod settings;
+mod settings_screen;
 mod shared;
+mod theme;
+mod uninstall_settings_screen;
 pub mod uninstaller;

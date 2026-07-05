@@ -17,6 +17,7 @@ pub struct CrapManifest {
 #[serde(deny_unknown_fields)]
 pub struct BuildConfig {
     pub publisher: Option<String>,
+    pub display_name: Option<String>,
     #[serde(default)]
     pub packages: Vec<String>,
     #[serde(default)]
@@ -128,6 +129,10 @@ pub struct WindowsPlatform {
     pub bin_dir: Option<String>,
     #[serde(default)]
     pub files: Vec<FileMapping>,
+    #[serde(default)]
+    pub associated_files: Vec<AssociatedFile>,
+    #[serde(default)]
+    pub eulas: Vec<EulaFile>,
     pub display_icon: Option<String>,
 }
 
@@ -145,7 +150,11 @@ impl PlatformManifest for WindowsPlatform {
     }
 
     fn variable_sources(&self) -> Vec<&str> {
-        self.install_path.iter().map(String::as_str).collect()
+        self.install_path
+            .iter()
+            .map(String::as_str)
+            .chain(self.associated_files.iter().map(|file| file.path.as_str()))
+            .collect()
     }
 
     fn files(&self) -> &[FileMapping] {
@@ -158,6 +167,47 @@ impl PlatformManifest for WindowsPlatform {
 
     fn targets(&self) -> Vec<&'static str> {
         self.targets.iter().map(WindowsTarget::target).collect()
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AssociatedFile {
+    pub path: String,
+    pub kind: AssociatedFileKind,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AssociatedFileKind {
+    File,
+    Directory,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum EulaFile {
+    Path(String),
+    Options {
+        path: String,
+        #[serde(default = "default_true")]
+        required: bool,
+    },
+}
+
+impl EulaFile {
+    pub fn path(&self) -> &str {
+        match self {
+            Self::Path(path) => path,
+            Self::Options { path, .. } => path,
+        }
+    }
+
+    pub fn required(&self) -> bool {
+        match self {
+            Self::Path(_) => true,
+            Self::Options { required, .. } => *required,
+        }
     }
 }
 
@@ -176,6 +226,10 @@ impl WindowsInstaller {
             WindowsInstaller::Gui => "gui",
         }
     }
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Debug, Deserialize)]

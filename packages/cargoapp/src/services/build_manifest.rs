@@ -31,8 +31,17 @@ impl BuildManifest {
                 PlatformConfig::Windows(windows) => Some(windows.installer),
                 PlatformConfig::Macos(_) | PlatformConfig::Linux(_) => None,
             };
+            let associated_files = match &platform {
+                PlatformConfig::Windows(windows) => windows.associated_files.as_slice(),
+                PlatformConfig::Macos(_) | PlatformConfig::Linux(_) => &[],
+            };
+            let eulas = match &platform {
+                PlatformConfig::Windows(windows) => windows.eulas.as_slice(),
+                PlatformConfig::Macos(_) | PlatformConfig::Linux(_) => &[],
+            };
             let display_icon =
                 display_icon_destination(&platform, &cargo_package.name, &cargo_package.binaries);
+            let display_icon_source = platform.display_icon();
 
             for target in platform.targets() {
                 targets.push(TargetManifest::new(
@@ -48,6 +57,9 @@ impl BuildManifest {
                 platform.name(),
                 installer,
                 display_icon.as_deref(),
+                display_icon_source,
+                associated_files,
+                eulas,
                 &variable_sources,
                 &files,
                 targets,
@@ -81,6 +93,10 @@ impl BuildManifest {
             output.push_str(&format!("publisher: {publisher}\n"));
         }
 
+        if let Some(display_name) = &self.build.display_name {
+            output.push_str(&format!("display name: {display_name}\n"));
+        }
+
         if !self.build.packages.is_empty() {
             output.push_str(&format!("packages: {}\n", self.build.packages.join(", ")));
         }
@@ -107,6 +123,27 @@ impl BuildManifest {
 
             if let Some(display_icon) = &platform.display_icon {
                 output.push_str(&format!("    display icon: {display_icon}\n"));
+            }
+
+            if !platform.associated_files.is_empty() {
+                output.push_str("    associated files:\n");
+
+                for file in &platform.associated_files {
+                    output.push_str(&format!("      {:?}: {}\n", file.kind, file.path));
+                }
+            }
+
+            if !platform.eulas.is_empty() {
+                output.push_str("    eulas:\n");
+
+                for eula in &platform.eulas {
+                    let required = if eula.required() {
+                        "required"
+                    } else {
+                        "optional"
+                    };
+                    output.push_str(&format!("      {} ({required})\n", eula.path()));
+                }
             }
 
             for target in &platform.targets {

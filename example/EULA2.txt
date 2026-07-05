@@ -1,0 +1,4 @@
+Example App License
+
+This is a sample license agreement for the example installer.
+Replace this file with the real license text before shipping an application.

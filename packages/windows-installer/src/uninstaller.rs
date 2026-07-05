@@ -15,9 +15,9 @@ pub fn run(
 
 #[cfg(feature = "gui")]
 pub fn run(
-    _config: &'static [u8],
-    _payload: &'static [u8],
-    _uninstaller: &'static [u8],
+    config: &'static [u8],
+    payload: &'static [u8],
+    uninstaller: &'static [u8],
 ) -> Result<(), String> {
-    crate::gui::uninstaller::run().map_err(|error| error.to_string())
+    crate::gui::uninstaller::run(config, payload, uninstaller)
 }
