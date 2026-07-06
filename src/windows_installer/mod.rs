@@ -1,3 +1,9 @@
+//! Runtime Windows installer and uninstaller library.
+//!
+//! Generated Windows setup projects embed this module through `libcrapapp`.
+//! The `cli` feature enables command-line setup entrypoints, and the `gui`
+//! feature enables graphical setup entrypoints.
+
 #[cfg(feature = "cli")]
 pub mod cli;
 mod config;
@@ -20,7 +26,7 @@ pub use config::{
 };
 pub use install::{
     ExistingInstall, InstallPlan, InstallReport, add_to_path_requested, create_associated_files,
-    install_plan, prune_install_root, resolve_variables, validate_variables,
+    install_plan, prune_install_root, resolve_variables, validate_variables, write_eula_reports,
 };
 pub use shortcuts::{create_start_menu_shortcuts, remove_start_menu_shortcuts};
 pub use uninstall::{

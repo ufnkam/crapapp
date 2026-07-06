@@ -8,6 +8,7 @@ use crate::windows_installer::config::{
 };
 use crate::windows_installer::registry::{RegistryEntry, RegistryValue, registry_install_exists};
 use crate::windows_installer::resolve_install_path;
+use serde_json::json;
 
 #[derive(Clone, Debug)]
 pub struct InstallPlan {
@@ -218,6 +219,66 @@ pub fn create_associated_files(
                     .map_err(|error| format!("failed to create {}: {error}", path.display()))?;
             }
         }
+    }
+
+    Ok(())
+}
+
+pub fn write_eula_reports(
+    config: &InstallerConfig,
+    variables: &HashMap<String, String>,
+    install_root: &Path,
+) -> Result<(), String> {
+    if config.eulas.is_empty() {
+        return Ok(());
+    }
+
+    let eulas = config
+        .eulas
+        .iter()
+        .map(|eula| {
+            json!({
+                "name": eula.name,
+                "required": eula.required,
+                "accepted": true,
+            })
+        })
+        .collect::<Vec<_>>();
+
+    let report = json!({
+        "app_name": config.app_name,
+        "app_version": config.app_version,
+        "display_name": config.display_name,
+        "eulas": eulas,
+    });
+    let report = serde_json::to_vec_pretty(&report)
+        .map_err(|error| format!("failed to serialize EULA report: {error}"))?;
+
+    for entry in config
+        .associated_files
+        .iter()
+        .filter(|entry| entry.eula_report)
+    {
+        let vars = resolve_variables(&entry.path, variables);
+        let mut path = resolve_install_path(vars.into(), install_root);
+
+        match entry.kind {
+            AssociatedFileKind::File => {
+                if let Some(parent) = path.parent() {
+                    fs::create_dir_all(parent).map_err(|error| {
+                        format!("failed to create {}: {error}", parent.display())
+                    })?;
+                }
+            }
+            AssociatedFileKind::Directory => {
+                fs::create_dir_all(&path)
+                    .map_err(|error| format!("failed to create {}: {error}", path.display()))?;
+                path = path.join("eulas.json");
+            }
+        }
+
+        fs::write(&path, &report)
+            .map_err(|error| format!("failed to write {}: {error}", path.display()))?;
     }
 
     Ok(())

@@ -1,3 +1,8 @@
+//! Build-manifest and bundling services used by `cargo crapapp`.
+//!
+//! This module reads `CRAP.toml`, combines it with Cargo metadata, creates the
+//! platform build manifest, and dispatches platform bundlers.
+
 mod build_config_manifest;
 mod build_manifest;
 mod build_variable;

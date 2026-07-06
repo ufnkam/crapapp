@@ -15,6 +15,7 @@ files = [
 ]
 associated_files = [
     { path = "$HOMEPATH/Documents/Example App/saves", kind = "directory" },
+    { path = "$HOMEPATH/Documents/Example App/eulas", kind = "directory", eula_report = true },
     { path = "$INSTALLPATH/settings.json", kind = "file" },
 ]
 shortcuts = [

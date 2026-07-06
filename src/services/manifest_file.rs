@@ -177,6 +177,8 @@ impl PlatformManifest for WindowsPlatform {
 pub struct AssociatedFile {
     pub path: String,
     pub kind: AssociatedFileKind,
+    #[serde(default)]
+    pub eula_report: bool,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]

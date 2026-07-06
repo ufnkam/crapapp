@@ -160,7 +160,15 @@ impl PlatformManifest for WindowsPlatformManifest {
             output.push_str("    associated files:\n");
 
             for file in &self.associated_files {
-                output.push_str(&format!("      {:?}: {}\n", file.kind, file.path));
+                let eula_report = if file.eula_report {
+                    " (EULA report)"
+                } else {
+                    ""
+                };
+                output.push_str(&format!(
+                    "      {:?}: {}{}\n",
+                    file.kind, file.path, eula_report
+                ));
             }
         }
 

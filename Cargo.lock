@@ -492,7 +492,7 @@ dependencies = [
  "strum_macros",
  "toml 0.8.23",
  "usvg",
- "windows 0.58.0",
+ "windows 0.62.2",
  "winreg",
 ]
 

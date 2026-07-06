@@ -18,6 +18,7 @@ use crate::windows_installer::config::{ADD_TO_PATH_VARIABLE, InstallerConfig};
 use crate::windows_installer::install::{
     add_to_path_requested, add_user_path_entries, create_associated_files, estimated_size_kb,
     install_plan, prune_install_root, registry_entries, uninstall_entries, validate_variables,
+    write_eula_reports,
 };
 use crate::windows_installer::registry::{remove_registry_key, write_registry_entries};
 use crate::windows_installer::{
@@ -351,6 +352,7 @@ fn install(
             "Creating associated files and directories",
         );
         create_associated_files(config, variables, &plan.install_root)?;
+        write_eula_reports(config, variables, &plan.install_root)?;
     }
 
     if !config.shortcuts.is_empty() {

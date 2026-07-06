@@ -371,28 +371,13 @@ struct LibcrapappDependency {
     build: String,
 }
 
-fn write_setup_assets(setup_source_dir: &Path, display_icon_source: Option<&str>) -> Result<()> {
+fn write_setup_assets(setup_source_dir: &Path, _display_icon_source: Option<&str>) -> Result<()> {
     let assets_dir = setup_source_dir.join("assets");
     fs::create_dir_all(&assets_dir)
         .with_context(|| format!("failed to create {}", assets_dir.display()))?;
     let install_icon = assets_dir.join("install.ico");
-    if let Some(display_icon_source) = display_icon_source.filter(|source| {
-        Path::new(source)
-            .extension()
-            .and_then(|extension| extension.to_str())
-            .is_some_and(|extension| extension.eq_ignore_ascii_case("ico"))
-    }) {
-        fs::copy(display_icon_source, &install_icon).with_context(|| {
-            format!(
-                "failed to copy display icon {} to {}",
-                display_icon_source,
-                install_icon.display()
-            )
-        })?;
-    } else {
-        fs::write(&install_icon, INSTALL_ICON)
-            .with_context(|| "failed to write setup install icon")?;
-    }
+
+    fs::write(&install_icon, INSTALL_ICON).with_context(|| "failed to write setup install icon")?;
 
     Ok(())
 }

@@ -1,3 +1,9 @@
+//! CLI implementation for the `cargo crapapp` subcommand.
+//!
+//! The public entrypoint is [`run_cli`]. It normalizes Cargo subcommand
+//! arguments, parses the command line, and dispatches to the build-manifest and
+//! bundling services.
+
 use std::env;
 use std::ffi::OsString;
 

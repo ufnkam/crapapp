@@ -35,6 +35,8 @@ impl PayloadEntry {
 pub struct AssociatedFile {
     pub path: String,
     pub kind: AssociatedFileKind,
+    #[serde(default)]
+    pub eula_report: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

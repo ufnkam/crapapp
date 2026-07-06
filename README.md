@@ -1,80 +1,40 @@
 # cargo-crapapp
 
-Cargo plugin for bundling multiplatform Rust apps from `CRAP.toml` without external dependencies like wixl or nsis.
+Cargo plugin for bundling Rust desktop apps from `CRAP.toml` without external
+dependencies like wixl or nsis.
 
 It exists because some enterprise environments, especially in banking, are very
 good at inventing security rituals and very bad at understanding what is
-actually secure. Sometimes Artifactory meatadata is missing, nobody owns Linux package
-distribution or Windows packaging tools are blocked.
+actually secure. Sometimes Artifactory metadata is missing, nobody owns Linux
+package distribution, or Windows packaging tools are blocked.
 
-The goal is simple: read a manifest, build Rust binaries for configured
-targets, and produce something a user can install without negotiating with five
-teams and producing 2534 Jira tickets.
+The goal is simple: read a manifest, build Rust binaries for configured targets,
+and produce something a user can install without negotiating with five teams and
+producing 2534 Jira tickets.
 
-## Status
+## What It Does
+It can build configured Cargo packages, collect payload files, generate a
+`setup.exe`, embed the payload, write uninstall metadata, create optional GUI
+installer screens, show EULAs, create associated app files, write EULA
+acceptance reports, create Start Menu search shortcuts, and update the current
+user's `PATH`.
 
-### Finished
+The generated `setup.exe` always uses the cargo-crapapp crab icon. Application
+`display_icon` is used by the visual installer and Windows uninstall metadata;
+the application executable still owns its own icon.
 
-- Basic `setup.exe` generation for Windows from the CLI.
-- Cargo package and feature selection from `CRAP.toml`.
-- Windows payload embedding into `setup.exe`.
-- Embedded `uninstall.exe`.
-- Per-user Windows uninstall registry entry.
-- Per-user `PATH` updates through `HKCU\Environment`.
-- Installer-time `ADD_TO_PATH` variable for PATH updates.
-- Windows uninstall registry `DisplayIcon` wiring to one configured app binary.
-- Microsoft Fluent icons for generated setup/uninstall executables.
-- `inspect` command with text and JSON output.
+Linux and macOS output are not supported yet.
 
-### Unfinished
+## Should You Use It?
 
-- Building self-contained apps for macOS.
-- Building self-contained apps for Linux.
-- Real packaging formats for Linux/macOS.
-- Proper end-to-end tests across all supported targets.
+Probably not. The only reason to use it is that your life circles in a corporate
+trap and normal packaging tools are politically unavailable.
 
-### Planned
-
-- Installation and uninstallation GUI for Windows.
-- Signing Windows apps.
-- Better output directory structure.
-- More validation around installer paths and payload layout.
-
-## Example
-
-```toml
-[build]
-publisher = "Example Publisher"
-packages = ["example"]
-features = []
-
-[windows]
-targets = [
-    "x86_64-pc-windows-gnu",
-]
-install_path = "$INSTALLPATH"
-files = [
-    { source = "Cargo.toml", destination = "manifests/Cargo.toml" },
-]
-```
-
-Windows setup variables are passed with repeated `--args KEY=value` flags:
-
-```sh
-setup.exe --args INSTALLPATH=C:\Users\me\AppData\Local\example
-setup.exe --args INSTALLPATH=C:\Users\me\AppData\Local\example --args ADD_TO_PATH=0
-```
-
-Inspect the generated build manifest:
+## Commands
 
 ```sh
 cargo crapapp inspect
 cargo crapapp inspect --output json
-```
-
-Build configured targets:
-
-```sh
 cargo crapapp build
 ```
 
@@ -84,20 +44,6 @@ Windows output currently lands in:
 .crapapp_build/windows/<target>/setup.exe
 ```
 
-## Why So Small?
+Full CLI, `CRAP.toml`, and `libcrapapp` documentation lives in [docs.md](docs.md)
+and is rendered as the crate documentation on docs.rs.
 
-Because this tool is not trying to become another sacred enterprise platform.
-It should stay boring, inspectable, and easy to delete when something better is
-available.
-
-The design bias is:
-
-- no mystery services
-- no central server
-- no required admin registry writes
-- no shell profile hacks
-- no pretending that packaging is more magical than copying files carefully
-
-## Should You Use It?
-
-Probably not. The only reason to use it is that your life circles in a corporate trap and normal packaging tools are politically unavailable.
