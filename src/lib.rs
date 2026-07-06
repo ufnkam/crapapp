@@ -1,3 +1,5 @@
-pub fn hello_world() {
-    println!("hello_world from cargo crapapp lib")
-}
+pub mod cli;
+pub mod services;
+pub mod windows_installer;
+
+pub use cli::run_cli;

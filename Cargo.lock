@@ -479,7 +479,21 @@ name = "cargo-crapapp"
 version = "0.2.0"
 dependencies = [
  "anyhow",
- "cargoapp",
+ "cargo_metadata",
+ "clap",
+ "directories",
+ "iced",
+ "image",
+ "minijinja",
+ "rfd",
+ "serde",
+ "serde_json",
+ "strum",
+ "strum_macros",
+ "toml 0.8.23",
+ "usvg",
+ "windows 0.58.0",
+ "winreg",
 ]
 
 [[package]]
@@ -504,23 +518,6 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.18",
-]
-
-[[package]]
-name = "cargoapp"
-version = "0.2.0"
-dependencies = [
- "anyhow",
- "cargo_metadata",
- "clap",
- "image",
- "minijinja",
- "serde",
- "serde_json",
- "strum",
- "strum_macros",
- "toml 0.8.23",
- "usvg",
 ]
 
 [[package]]
@@ -4160,19 +4157,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
-]
-
-[[package]]
-name = "windows-installer"
-version = "0.2.0"
-dependencies = [
- "clap",
- "directories",
- "iced",
- "rfd",
- "serde",
- "serde_json",
- "winreg",
 ]
 
 [[package]]

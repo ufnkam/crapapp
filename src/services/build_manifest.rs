@@ -1,0 +1,157 @@
+use anyhow::{Context, Result};
+use serde::Serialize;
+
+use crate::services::build_config_manifest::BuildConfigManifest;
+use crate::services::cargo_package::CargoPackage;
+use crate::services::icons::validate_display_icon;
+use crate::services::manifest_file::{
+    CrapManifest, PlatformConfig, PlatformManifest as SourcePlatformManifest,
+};
+use crate::services::payload_file::{payload_files, resolve_destination};
+use crate::services::platform_manifest::{
+    BasicPlatformManifest, PlatformBuildManifest, PlatformManifest, WindowsPlatformManifest,
+};
+use crate::services::target_manifest::TargetManifest;
+use std::path::Path;
+
+#[derive(Debug, Serialize)]
+pub struct BuildManifest<M: PlatformManifest> {
+    pub app_name: String,
+    pub version: String,
+    pub build: BuildConfigManifest,
+    pub platforms: Vec<M>,
+}
+
+impl BuildManifest<PlatformBuildManifest> {
+    pub fn from_crap_manifest(manifest: &CrapManifest) -> Result<Self> {
+        let cargo_package = CargoPackage::load()?;
+        let mut platforms = Vec::new();
+
+        for platform in manifest.platforms() {
+            let files = payload_files(platform.files(), platform.install_path())?;
+            validate_display_icon(platform.display_icon())?;
+            let mut targets = Vec::new();
+            let variable_sources = platform.variable_sources();
+            let display_icon =
+                display_icon_destination(&platform, &cargo_package.name, &cargo_package.binaries);
+            let display_icon_source = platform.display_icon();
+            let shortcuts = match &platform {
+                PlatformConfig::Windows(windows) => windows.shortcuts.as_slice(),
+                PlatformConfig::Macos(_) | PlatformConfig::Linux(_) => &[],
+            };
+
+            for target in platform.targets() {
+                targets.push(TargetManifest::new(
+                    target,
+                    &cargo_package.binaries,
+                    platform.install_path(),
+                    platform.bin_dir(),
+                    &files,
+                    shortcuts,
+                )?);
+            }
+
+            platforms.push(match &platform {
+                PlatformConfig::Windows(windows) => {
+                    PlatformBuildManifest::Windows(WindowsPlatformManifest::new(
+                        platform.name(),
+                        Some(windows.installer),
+                        display_icon.as_deref(),
+                        display_icon_source,
+                        &windows.associated_files,
+                        &windows.eulas,
+                        &variable_sources,
+                        &files,
+                        targets,
+                    )?)
+                }
+                PlatformConfig::Macos(_) => PlatformBuildManifest::Macos(
+                    BasicPlatformManifest::new(platform.name(), targets),
+                ),
+                PlatformConfig::Linux(_) => PlatformBuildManifest::Linux(
+                    BasicPlatformManifest::new(platform.name(), targets),
+                ),
+            });
+        }
+
+        Ok(Self {
+            app_name: cargo_package.name,
+            version: cargo_package.version,
+            build: BuildConfigManifest::from_crap_manifest(manifest),
+            platforms,
+        })
+    }
+}
+
+impl<M: PlatformManifest> BuildManifest<M> {
+    pub fn display(&self, formatter: BuildManifestFormatter) -> Result<String> {
+        match formatter {
+            BuildManifestFormatter::Text => Ok(self.display_text()),
+            BuildManifestFormatter::Json => {
+                serde_json::to_string_pretty(self).context("failed to render build manifest")
+            }
+        }
+    }
+
+    fn display_text(&self) -> String {
+        let mut output = String::new();
+
+        output.push_str(&format!("app: {}\n", self.app_name));
+        output.push_str(&format!("version: {}\n", self.version));
+
+        if let Some(publisher) = &self.build.publisher {
+            output.push_str(&format!("publisher: {publisher}\n"));
+        }
+
+        if let Some(display_name) = &self.build.display_name {
+            output.push_str(&format!("display name: {display_name}\n"));
+        }
+
+        if !self.build.packages.is_empty() {
+            output.push_str(&format!("packages: {}\n", self.build.packages.join(", ")));
+        }
+
+        if !self.build.features.is_empty() {
+            output.push_str(&format!("features: {}\n", self.build.features.join(", ")));
+        }
+
+        output.push_str("platforms:\n");
+
+        for platform in &self.platforms {
+            platform.write_text(&mut output);
+        }
+
+        output
+    }
+}
+
+fn display_icon_destination(
+    platform: &impl crate::services::manifest_file::PlatformManifest,
+    package_name: &str,
+    binary_names: &[String],
+) -> Option<String> {
+    platform.display_icon()?;
+    let binary_name = binary_names
+        .iter()
+        .find(|binary| binary.as_str() == package_name)
+        .or_else(|| binary_names.first())?;
+    let binary_file_name = if platform.name() == "windows" {
+        format!("{binary_name}.exe")
+    } else {
+        binary_name.to_owned()
+    };
+
+    Some(resolve_destination(
+        platform.install_path(),
+        &Path::new(platform.bin_dir())
+            .join(&binary_file_name)
+            .display()
+            .to_string(),
+    ))
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum BuildManifestFormatter {
+    Text,
+    Json,
+}

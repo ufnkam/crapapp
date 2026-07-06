@@ -1,0 +1,20 @@
+{% if gui_installer -%}
+#![cfg_attr(windows, windows_subsystem = "windows")]
+
+{% endif -%}
+use std::process;
+
+const SETUP_CONFIG: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/setup-config.json"));
+const PAYLOAD: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/payload.bin"));
+const UNINSTALLER: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/uninstall.exe"));
+
+fn main() {
+    if let Err(error) = libcrapapp::windows_installer::installer::run(
+        SETUP_CONFIG,
+        PAYLOAD,
+        UNINSTALLER,
+    ) {
+        eprintln!("error: {error}");
+        process::exit(1);
+    }
+}

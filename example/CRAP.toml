@@ -14,8 +14,12 @@ files = [
     { source = "some_assets", destination = "some_assets" },
 ]
 associated_files = [
-    { path = "$INSTALLPATH/saves", kind = "directory" },
+    { path = "$HOMEPATH/Documents/Example App/saves", kind = "directory" },
     { path = "$INSTALLPATH/settings.json", kind = "file" },
+]
+shortcuts = [
+    { binary = "first_bin", name = "Example First", directory = "Example App" },
+    { binary = "second_bin", name = "Example Second", directory = "Example App" },
 ]
 eulas = [
     { path = "EULA.txt" },

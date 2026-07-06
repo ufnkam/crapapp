@@ -1,3 +1,5 @@
+use libcrapapp::run_cli;
+
 fn main() -> anyhow::Result<()> {
-    cargoapp::run_cli()
+    run_cli()
 }

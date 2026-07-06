@@ -14,12 +14,12 @@ categories = [
 repository = "https://github.com/ufnkam/crapapp"
 
 [workspace]
-members = ["example", "packages/cargoapp", "packages/windows-installer"]
+members = ["example"]
 exclude = ["example/.crapapp_build"]
 resolver = "3"
 
 [lib]
-name = "cargo_crapapp"
+name = "libcrapapp"
 path = "src/lib.rs"
 
 [[bin]]
@@ -28,4 +28,25 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = "1.0.103"
-crapapp = { version = "0.2.0", path = "packages/cargoapp" }
+cargo_metadata = "0.23.1"
+clap = { version = "4.5.40", features = ["derive"] }
+directories = { version = "6.0.0", optional = true }
+iced = { version = "0.14.0", features = ["image-without-codecs"], optional = true }
+image = { version = "0.25.10", default-features = false, features = ["ico", "png"] }
+minijinja = "2.12.0"
+rfd = { version = "0.17.2", optional = true }
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.150"
+strum = { version = "0.28.0", features = ["derive"] }
+strum_macros = "0.28.0"
+toml = "0.8.23"
+usvg = { version = "0.47.0", default-features = false }
+
+[features]
+default = []
+cli = []
+gui = ["dep:directories", "dep:iced", "dep:rfd"]
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58.0", features = ["Win32_System_Com", "Win32_UI_Shell"] }
+winreg = "0.56.0"
