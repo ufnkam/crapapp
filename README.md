@@ -13,15 +13,16 @@ and produce something a user can install without negotiating with five teams and
 producing 2534 Jira tickets.
 
 ## What It Does
-It can build configured Cargo packages, collect payload files, generate a
-`setup.exe`, embed the payload, write uninstall metadata, create optional GUI
-installer screens, show EULAs, create associated app files, write EULA
-acceptance reports, create Start Menu search shortcuts, and update the current
-user's `PATH`.
-
-The generated `setup.exe` always uses the cargo-crapapp crab icon. Application
-`display_icon` is used by the visual installer and Windows uninstall metadata;
-the application executable still owns its own icon.
+It can: 
+- build configured Cargo packages 
+- collect payload files 
+- generate a`setup.exe` 
+- embed the payload 
+- write uninstall metadata 
+- create optional GUI installer screens with EULAs with acceptance reports etc 
+- create associated app files
+- create Start Menu search shortcuts 
+- and update the current user's `PATH`.
 
 Linux and macOS output are not supported yet.
 
