@@ -1,0 +1,2 @@
+mod windows_platform_manifest;
+pub use windows_platform_manifest::WindowsPlatformManifest;

@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 use anyhow::{Result, bail};
@@ -6,14 +6,14 @@ use anyhow::{Result, bail};
 use crate::services::manifest_file::ShortcutMapping;
 use crate::services::payload_file::{PayloadFile, resolve_destination};
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct TargetManifest {
     pub target: String,
     pub files: Vec<PayloadFile>,
     pub shortcuts: Vec<Shortcut>,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Shortcut {
     pub target: String,
     pub name: String,

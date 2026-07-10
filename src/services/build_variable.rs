@@ -80,7 +80,7 @@ pub fn variables_from_value(value: &str) -> Vec<String> {
     variables
 }
 
-pub fn platform_variables(
+pub fn get_platform_variables(
     variable_sources: &[&str],
     files: &[PayloadFile],
 ) -> Result<Vec<BuildVariable>> {

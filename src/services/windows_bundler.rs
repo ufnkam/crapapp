@@ -10,7 +10,7 @@ use serde_json::{Value, json};
 use crate::services::build_manifest::BuildManifest;
 use crate::services::manifest_file::{EulaFile, WindowsInstaller};
 use crate::services::payload_file::PayloadFile;
-use crate::services::platform_manifest::{PlatformManifest, WindowsPlatformManifest};
+use crate::services::platform_manifests::WindowsPlatformManifest;
 use crate::services::target_manifest::Shortcut;
 
 const SETUP_CARGO_TOML: &str = include_str!("../../assets/windows-installer/Cargo.toml.j2");
@@ -22,24 +22,28 @@ const LIBCRAPAPP_VERSION: &str = "0.2.0";
 const SETUP_CONFIG: &str = "setup-config.json";
 const DISPLAY_ICON_SIZE: u32 = 256;
 
-pub struct WindowsBundler<'a, M: PlatformManifest> {
-    build_manifest: &'a BuildManifest<M>,
+pub struct WindowsBundler<'a> {
+    build_manifest: &'a BuildManifest,
+    platform: &'a WindowsPlatformManifest,
     build_dir: &'a Path,
 }
 
-impl<'a, M: PlatformManifest> WindowsBundler<'a, M> {
-    pub fn new(build_manifest: &'a BuildManifest<M>, build_dir: &'a Path) -> Self {
+impl<'a> WindowsBundler<'a> {
+    pub fn new(
+        build_manifest: &'a BuildManifest,
+        platform: &'a WindowsPlatformManifest,
+        build_dir: &'a Path,
+    ) -> Self {
         Self {
             build_manifest,
+            platform,
             build_dir,
         }
     }
 
-    pub fn bundle(&self) -> Result<()> {
-        let windows = self.windows_platform()?;
-
-        for target in &windows.targets {
-            let output_dir = self.build_dir.join(&windows.platform).join(&target.target);
+    pub fn bundle(&self) -> anyhow::Result<()> {
+        for target in &self.platform.targets {
+            let output_dir = self.build_dir.join(&self.platform.platform).join(&target.target);
             let setup_source_dir = output_dir.join("setup-src");
             let setup_output = output_dir.join("setup.exe");
 
@@ -53,23 +57,20 @@ impl<'a, M: PlatformManifest> WindowsBundler<'a, M> {
                 )
             })?;
 
-            self.write_setup_project(windows, &target.files, &target.shortcuts, &setup_source_dir)?;
+            self.write_setup_project(
+                self.platform,
+                &target.files,
+                &target.shortcuts,
+                &setup_source_dir,
+            )?;
             self.build_uninstaller(&target.target, &setup_source_dir)?;
-            self.write_setup_rs_with_uninstaller(windows, &target.target, &setup_source_dir)?;
+            self.write_setup_rs_with_uninstaller(self.platform, &target.target, &setup_source_dir)?;
             self.build_setup(&target.target, &setup_source_dir)?;
             self.copy_setup_output(&target.target, &setup_source_dir, &setup_output)?;
             self.clean_setup_source(&setup_source_dir)?;
         }
 
         Ok(())
-    }
-
-    fn windows_platform(&self) -> Result<&WindowsPlatformManifest> {
-        self.build_manifest
-            .platforms
-            .iter()
-            .find_map(|platform| platform.as_windows())
-            .context("windows platform is not configured")
     }
 
     fn write_setup_project(

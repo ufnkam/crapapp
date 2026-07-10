@@ -9,20 +9,21 @@ use crate::services::manifest_file::{
 };
 use crate::services::payload_file::{payload_files, resolve_destination};
 use crate::services::platform_manifest::{
-    BasicPlatformManifest, PlatformBuildManifest, PlatformManifest, WindowsPlatformManifest,
+    BasicPlatformManifest, PlatformBuildManifest, PlatformManifest,
 };
+use crate::services::platform_manifests::WindowsPlatformManifest;
 use crate::services::target_manifest::TargetManifest;
 use std::path::Path;
 
 #[derive(Debug, Serialize)]
-pub struct BuildManifest<M: PlatformManifest> {
+pub struct BuildManifest {
     pub app_name: String,
     pub version: String,
     pub build: BuildConfigManifest,
-    pub platforms: Vec<M>,
+    pub platforms: Vec<Box<PlatformBuildManifest>>,
 }
 
-impl BuildManifest<PlatformBuildManifest> {
+impl BuildManifest {
     pub fn from_crap_manifest(manifest: &CrapManifest) -> Result<Self> {
         let cargo_package = CargoPackage::load()?;
         let mut platforms = Vec::new();
@@ -51,7 +52,7 @@ impl BuildManifest<PlatformBuildManifest> {
                 )?);
             }
 
-            platforms.push(match &platform {
+            platforms.push(Box::new(match &platform {
                 PlatformConfig::Windows(windows) => {
                     PlatformBuildManifest::Windows(WindowsPlatformManifest::new(
                         platform.name(),
@@ -71,7 +72,7 @@ impl BuildManifest<PlatformBuildManifest> {
                 PlatformConfig::Linux(_) => PlatformBuildManifest::Linux(
                     BasicPlatformManifest::new(platform.name(), targets),
                 ),
-            });
+            }));
         }
 
         Ok(Self {
@@ -83,7 +84,7 @@ impl BuildManifest<PlatformBuildManifest> {
     }
 }
 
-impl<M: PlatformManifest> BuildManifest<M> {
+impl BuildManifest {
     pub fn display(&self, formatter: BuildManifestFormatter) -> Result<String> {
         match formatter {
             BuildManifestFormatter::Text => Ok(self.display_text()),
@@ -122,6 +123,13 @@ impl<M: PlatformManifest> BuildManifest<M> {
         }
 
         output
+    }
+
+    pub fn get_platform_config(&self, platform: &str) -> Option<&PlatformBuildManifest> {
+        self.platforms
+            .iter()
+            .map(Box::as_ref)
+            .find(|_platform| _platform.platform() == platform)
     }
 }
 

@@ -5,15 +5,15 @@ use std::process::Command;
 use anyhow::{Context, Result, bail};
 
 use crate::services::build_manifest::BuildManifest;
-use crate::services::platform_manifest::PlatformManifest;
+use crate::services::platform_manifest::{PlatformBuildManifest, PlatformManifest};
 use crate::services::windows_bundler::WindowsBundler;
 
-pub struct Builder<'a, M: PlatformManifest> {
-    build_manifest: &'a BuildManifest<M>,
+pub struct Builder<'a> {
+    build_manifest: &'a BuildManifest,
 }
 
-impl<'a, M: PlatformManifest> Builder<'a, M> {
-    pub fn new(build_manifest: &'a BuildManifest<M>) -> Self {
+impl<'a> Builder<'a> {
+    pub fn new(build_manifest: &'a BuildManifest) -> Self {
         Self { build_manifest }
     }
 
@@ -50,13 +50,10 @@ impl<'a, M: PlatformManifest> Builder<'a, M> {
             }
         }
 
-        if self
-            .build_manifest
-            .platforms
-            .iter()
-            .any(|platform| platform.platform() == "windows")
+        if let Some(PlatformBuildManifest::Windows(platform)) =
+            self.build_manifest.get_platform_config("windows")
         {
-            WindowsBundler::new(self.build_manifest, &build_dir).bundle()?;
+            WindowsBundler::new(self.build_manifest, platform, &build_dir).bundle()?;
         }
 
         Ok(())

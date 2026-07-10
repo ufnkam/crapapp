@@ -12,6 +12,7 @@ mod icons;
 mod manifest_file;
 mod payload_file;
 mod platform_manifest;
+pub mod platform_manifests;
 mod target_manifest;
 mod windows_bundler;
 
