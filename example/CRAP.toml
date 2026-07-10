@@ -19,15 +19,15 @@ associated_files = [
     { path = "$INSTALLPATH/settings.json", kind = "file" },
 ]
 shortcuts = [
-    { binary = "first_bin", name = "Example First", directory = "Example App" },
-    { binary = "second_bin", name = "Example Second", directory = "Example App" },
+    { binary = "first_bin", name = "Example First", directory = "Example App", icon = "build_assets/first.ico" },
+    { binary = "second_bin", name = "Example Second", directory = "Example App", icon = "build_assets/second.ico" },
 ]
 eulas = [
     { path = "EULA.txt" },
     { path = "EULA2.txt", required = false },
 ]
 display_icon = "build_assets/icon.ico"
-installer = "gui"
+installer = [ "gui" ]
 
 # [linux]
 # targets = [
