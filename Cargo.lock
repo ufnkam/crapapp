@@ -476,7 +476,7 @@ dependencies = [
 
 [[package]]
 name = "cargo-crapapp"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "cargo_metadata",

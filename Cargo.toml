@@ -1,6 +1,6 @@
 [package]
 name = "cargo-crapapp"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 description = "Cargo subcommand for building CRAP app installers and self-contained app bundles"
 license = "Apache-2.0"
