@@ -50,7 +50,7 @@ targets, collects payload files, and writes generated output under
 Windows installer output currently lands in:
 
 ```text
-.crapapp_build/windows/<target>/setup.exe
+.crapapp_build/windows/<target>/<installer>/setup.exe
 ```
 
 Linux and macOS output are not supported yet.
@@ -145,7 +145,8 @@ set up that cross toolchain for you.
 
 ### Windows installer mode
 
-`installer` is optional and defaults to `cli`.
+`installer` is optional and defaults to `cli`. It accepts either a single value
+or a list.
 
 ```toml
 [windows]
@@ -156,6 +157,20 @@ Supported values:
 
 - `cli`, generates a command-line setup executable.
 - `gui`, generates a graphical setup executable.
+
+You can build more than one installer for the same target:
+
+```toml
+[windows]
+installer = ["cli", "gui"]
+```
+
+Outputs are grouped by installer name:
+
+```text
+.crapapp_build/windows/<target>/cli/setup.exe
+.crapapp_build/windows/<target>/gui/setup.exe
+```
 
 ### Windows install path
 
@@ -288,7 +303,7 @@ can find the app by display name. It does not pin anything.
 ```toml
 [windows]
 shortcuts = [
-    { binary = "acme-launcher", name = "Acme Launcher", directory = "Acme" },
+    { binary = "acme-launcher", name = "Acme Launcher", directory = "Acme", icon = "build_assets/acme.ico" },
 ]
 ```
 
@@ -297,6 +312,9 @@ Fields:
 - `binary`, the Cargo binary name without `.exe`.
 - `name`, the Start Menu shortcut display name.
 - `directory`, optional Start Menu directory.
+- `icon`, optional icon file source. The installer copies it next to the app
+  binaries and points the shortcut at the installed icon file. If omitted, the
+  shortcut uses the target executable icon.
 
 ## Linux and macOS
 
@@ -315,7 +333,6 @@ projects.
 Current public entrypoints:
 
 - [`run_cli`], used by the `cargo-crapapp` binary.
-- [`services`], build manifest creation and bundling internals used by the CLI.
 - [`windows_installer`], runtime installer and uninstaller code embedded into
   generated Windows setup projects.
 
@@ -331,8 +348,9 @@ fn main() -> anyhow::Result<()> {
 
 Generated Windows setup projects depend on `libcrapapp` with one runtime feature:
 
-- `cli`, for command-line installers.
-- `gui`, for graphical installers.
+- `windows`, for shared Windows installer config and build-support types.
+- `windows-cli`, for generated command-line Windows installers.
+- `windows-gui`, for generated graphical Windows installers.
 
 Future application-facing helpers, for example Windows icon/resource helpers,
 should live under `libcrapapp` and be documented here.

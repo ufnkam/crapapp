@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-use crate::services::manifest_file::CrapManifest;
+use crate::manifest_file::CrapManifest;
 
 #[derive(Debug, Serialize)]
 pub struct BuildConfigManifest {

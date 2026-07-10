@@ -1,6 +1,8 @@
 use anyhow::{Context, Result};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::path::Path;
+
+use crate::platform_manifests::WindowsPlatformManifest;
 
 pub const MANIFEST_PATH: &str = "CRAP.toml";
 
@@ -8,7 +10,7 @@ pub const MANIFEST_PATH: &str = "CRAP.toml";
 #[serde(deny_unknown_fields)]
 pub struct CrapManifest {
     pub build: Option<BuildConfig>,
-    pub windows: Option<WindowsPlatform>,
+    pub windows: Option<WindowsPlatformManifest>,
     pub macos: Option<MacosPlatform>,
     pub linux: Option<LinuxPlatform>,
 }
@@ -45,7 +47,7 @@ impl CrapManifest {
 }
 
 pub enum PlatformConfig<'a> {
-    Windows(&'a WindowsPlatform),
+    Windows(&'a WindowsPlatformManifest),
     Macos(&'a MacosPlatform),
     Linux(&'a LinuxPlatform),
 }
@@ -118,45 +120,21 @@ impl PlatformManifest for PlatformConfig<'_> {
     }
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct WindowsPlatform {
-    #[serde(default)]
-    pub targets: Vec<WindowsTarget>,
-    #[serde(default)]
-    pub installer: WindowsInstaller,
-    pub install_path: Option<String>,
-    pub bin_dir: Option<String>,
-    #[serde(default)]
-    pub files: Vec<FileMapping>,
-    #[serde(default)]
-    pub associated_files: Vec<AssociatedFile>,
-    #[serde(default)]
-    pub eulas: Vec<EulaFile>,
-    #[serde(default)]
-    pub shortcuts: Vec<ShortcutMapping>,
-    pub display_icon: Option<String>,
-}
-
-impl PlatformManifest for WindowsPlatform {
+impl PlatformManifest for WindowsPlatformManifest {
     fn name(&self) -> &'static str {
         "windows"
     }
 
     fn bin_dir(&self) -> &str {
-        self.bin_dir.as_deref().unwrap_or("")
+        self.bin_dir()
     }
 
     fn install_path(&self) -> Option<&str> {
-        self.install_path.as_deref()
+        self.install_path()
     }
 
     fn variable_sources(&self) -> Vec<&str> {
-        self.install_path
-            .iter()
-            .map(String::as_str)
-            .chain(self.associated_files.iter().map(|file| file.path.as_str()))
-            .collect()
+        self.variable_sources()
     }
 
     fn files(&self) -> &[FileMapping] {
@@ -164,7 +142,7 @@ impl PlatformManifest for WindowsPlatform {
     }
 
     fn display_icon(&self) -> Option<&str> {
-        self.display_icon.as_deref()
+        self.display_icon()
     }
 
     fn targets(&self) -> Vec<&'static str> {
@@ -194,6 +172,7 @@ pub struct ShortcutMapping {
     pub binary: String,
     pub name: String,
     pub directory: Option<String>,
+    pub icon: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -223,7 +202,11 @@ impl EulaFile {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize)]
+fn default_true() -> bool {
+    true
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub enum WindowsInstaller {
     #[default]
@@ -234,14 +217,129 @@ pub enum WindowsInstaller {
 impl WindowsInstaller {
     pub fn cargo_feature(self) -> &'static str {
         match self {
+            WindowsInstaller::Cli => "windows-cli",
+            WindowsInstaller::Gui => "windows-gui",
+        }
+    }
+
+    pub fn output_directory(self) -> &'static str {
+        match self {
             WindowsInstaller::Cli => "cli",
             WindowsInstaller::Gui => "gui",
         }
     }
+
+    pub fn output_file_name(self) -> &'static str {
+        match self {
+            WindowsInstaller::Cli | WindowsInstaller::Gui => "setup.exe",
+        }
+    }
 }
 
-fn default_true() -> bool {
-    true
+pub(crate) fn deserialize_windows_installers<'de, D>(
+    deserializer: D,
+) -> Result<Vec<WindowsInstaller>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum WindowsInstallerList {
+        One(WindowsInstaller),
+        Many(Vec<WindowsInstaller>),
+    }
+
+    Ok(match Option::<WindowsInstallerList>::deserialize(deserializer)? {
+        Some(WindowsInstallerList::One(installer)) => vec![installer],
+        Some(WindowsInstallerList::Many(installers)) => installers,
+        None => Vec::new(),
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CrapManifest, WindowsInstaller};
+
+    fn parse_manifest(source: &str) -> CrapManifest {
+        toml::from_str(source).expect("manifest should parse")
+    }
+
+    #[test]
+    fn windows_installer_defaults_to_cli() {
+        let manifest = parse_manifest(
+            r#"
+            [windows]
+            targets = ["x86_64-pc-windows-gnu"]
+            "#,
+        );
+
+        let windows = manifest.windows.expect("windows platform should exist");
+        assert_eq!(windows.installers(), vec![WindowsInstaller::Cli]);
+    }
+
+    #[test]
+    fn windows_installer_accepts_single_value() {
+        let manifest = parse_manifest(
+            r#"
+            [windows]
+            targets = ["x86_64-pc-windows-gnu"]
+            installer = "gui"
+            "#,
+        );
+
+        let windows = manifest.windows.expect("windows platform should exist");
+        assert_eq!(windows.installers(), vec![WindowsInstaller::Gui]);
+    }
+
+    #[test]
+    fn windows_installer_accepts_list() {
+        let manifest = parse_manifest(
+            r#"
+            [windows]
+            targets = ["x86_64-pc-windows-gnu"]
+            installer = ["cli", "gui"]
+            "#,
+        );
+
+        let windows = manifest.windows.expect("windows platform should exist");
+        assert_eq!(
+            windows.installers(),
+            vec![WindowsInstaller::Cli, WindowsInstaller::Gui]
+        );
+    }
+
+    #[test]
+    fn windows_installer_deduplicates_list_without_reordering() {
+        let manifest = parse_manifest(
+            r#"
+            [windows]
+            targets = ["x86_64-pc-windows-gnu"]
+            installer = ["gui", "cli", "gui"]
+            "#,
+        );
+
+        let windows = manifest.windows.expect("windows platform should exist");
+        assert_eq!(
+            windows.installers(),
+            vec![WindowsInstaller::Gui, WindowsInstaller::Cli]
+        );
+    }
+
+    #[test]
+    fn eula_required_false_parses() {
+        let manifest = parse_manifest(
+            r#"
+            [windows]
+            targets = ["x86_64-pc-windows-gnu"]
+            eulas = [
+                { path = "EULA.txt", required = false },
+            ]
+            "#,
+        );
+
+        let windows = manifest.windows.expect("windows platform should exist");
+        assert!(!windows.eulas[0].required());
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -322,7 +420,7 @@ impl PlatformManifest for LinuxPlatform {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct FileMapping {
     pub source: String,

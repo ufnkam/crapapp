@@ -38,6 +38,13 @@ pub fn create_start_menu_shortcuts(
             Cow::from(resolve_variables(&shortcut.target, variables)),
             install_root,
         );
+        let icon = shortcut
+            .icon
+            .as_deref()
+            .map(|icon| {
+                resolve_install_path(Cow::from(resolve_variables(icon, variables)), install_root)
+            })
+            .unwrap_or_else(|| target.clone());
         let shortcut_dir = shortcut
             .directory
             .as_deref()
@@ -52,6 +59,7 @@ pub fn create_start_menu_shortcuts(
             .map_err(|error| format!("failed to create {}: {error}", shortcut_dir.display()))?;
 
         let target = wide(target.as_os_str());
+        let icon = wide(icon.as_os_str());
         let working_dir = wide(working_dir.as_os_str());
         let shortcut_path = wide(shortcut_path.as_os_str());
 
@@ -65,7 +73,7 @@ pub fn create_start_menu_shortcuts(
                 .SetWorkingDirectory(PCWSTR(working_dir.as_ptr()))
                 .map_err(|error| format!("failed to set shortcut working directory: {error}"))?;
             shell_link
-                .SetIconLocation(PCWSTR(target.as_ptr()), 0)
+                .SetIconLocation(PCWSTR(icon.as_ptr()), 0)
                 .map_err(|error| format!("failed to set shortcut icon: {error}"))?;
 
             let persist_file: IPersistFile = shell_link

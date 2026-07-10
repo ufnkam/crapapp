@@ -1,18 +1,17 @@
 use anyhow::{Context, Result};
 use serde::Serialize;
 
-use crate::services::build_config_manifest::BuildConfigManifest;
-use crate::services::cargo_package::CargoPackage;
-use crate::services::icons::validate_display_icon;
-use crate::services::manifest_file::{
+use crate::build_config_manifest::BuildConfigManifest;
+use crate::cargo_package::CargoPackage;
+use crate::icons::validate_display_icon;
+use crate::manifest_file::{
     CrapManifest, PlatformConfig, PlatformManifest as SourcePlatformManifest,
 };
-use crate::services::payload_file::{payload_files, resolve_destination};
-use crate::services::platform_manifest::{
+use crate::payload_file::{payload_files, resolve_destination};
+use crate::platform_manifest::{
     BasicPlatformManifest, PlatformBuildManifest, PlatformManifest,
 };
-use crate::services::platform_manifests::WindowsPlatformManifest;
-use crate::services::target_manifest::TargetManifest;
+use crate::target_manifest::TargetManifest;
 use std::path::Path;
 
 #[derive(Debug, Serialize)]
@@ -40,6 +39,7 @@ impl BuildManifest {
                 PlatformConfig::Windows(windows) => windows.shortcuts.as_slice(),
                 PlatformConfig::Macos(_) | PlatformConfig::Linux(_) => &[],
             };
+            validate_shortcut_icons(shortcuts)?;
 
             for target in platform.targets() {
                 targets.push(TargetManifest::new(
@@ -54,16 +54,12 @@ impl BuildManifest {
 
             platforms.push(Box::new(match &platform {
                 PlatformConfig::Windows(windows) => {
-                    PlatformBuildManifest::Windows(WindowsPlatformManifest::new(
-                        platform.name(),
-                        Some(windows.installer),
-                        display_icon.as_deref(),
-                        display_icon_source,
-                        &windows.associated_files,
-                        &windows.eulas,
-                        &variable_sources,
+                    PlatformBuildManifest::Windows(windows.build(
                         &files,
                         targets,
+                        &variable_sources,
+                        display_icon.as_deref(),
+                        display_icon_source,
                     )?)
                 }
                 PlatformConfig::Macos(_) => PlatformBuildManifest::Macos(
@@ -82,6 +78,14 @@ impl BuildManifest {
             platforms,
         })
     }
+}
+
+fn validate_shortcut_icons(shortcuts: &[crate::manifest_file::ShortcutMapping]) -> Result<()> {
+    for shortcut in shortcuts {
+        validate_display_icon(shortcut.icon.as_deref())?;
+    }
+
+    Ok(())
 }
 
 impl BuildManifest {
@@ -134,7 +138,7 @@ impl BuildManifest {
 }
 
 fn display_icon_destination(
-    platform: &impl crate::services::manifest_file::PlatformManifest,
+    platform: &impl crate::manifest_file::PlatformManifest,
     package_name: &str,
     binary_names: &[String],
 ) -> Option<String> {

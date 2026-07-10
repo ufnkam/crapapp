@@ -1,24 +1,25 @@
 //! Runtime Windows installer and uninstaller library.
 //!
 //! Generated Windows setup projects embed this module through `libcrapapp`.
-//! The `cli` feature enables command-line setup entrypoints, and the `gui`
-//! feature enables graphical setup entrypoints.
+//! The `windows-cli` feature enables command-line setup entrypoints, and the
+//! `windows-gui` feature enables graphical setup entrypoints.
 
-#[cfg(feature = "cli")]
+#[cfg(feature = "windows-cli")]
 pub mod cli;
 mod config;
-#[cfg(feature = "gui")]
+#[cfg(feature = "windows-gui")]
 pub mod gui;
-#[cfg_attr(not(feature = "cli"), allow(dead_code))]
+#[cfg_attr(not(feature = "windows-cli"), allow(dead_code))]
 mod install;
-#[cfg(any(feature = "cli", feature = "gui"))]
+#[cfg(any(feature = "windows-cli", feature = "windows-gui"))]
 pub mod installer;
-#[cfg_attr(not(feature = "cli"), allow(dead_code))]
+#[cfg_attr(not(feature = "windows-cli"), allow(dead_code))]
 mod registry;
 mod shortcuts;
 mod uninstall;
-#[cfg(any(feature = "cli", feature = "gui"))]
+#[cfg(any(feature = "windows-cli", feature = "windows-gui"))]
 pub mod uninstaller;
+pub mod win_api;
 
 pub use config::{
     ADD_TO_PATH_VARIABLE, AssociatedFile, AssociatedFileKind, Eula, InstallerConfig, PayloadEntry,

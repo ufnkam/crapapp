@@ -4,7 +4,7 @@ use std::path::Path;
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 
-use crate::services::manifest_file::FileMapping;
+use crate::manifest_file::FileMapping;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PayloadFile {

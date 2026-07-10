@@ -42,9 +42,8 @@ cargo crapapp build
 Windows output currently lands in:
 
 ```text
-.crapapp_build/windows/<target>/setup.exe
+.crapapp_build/windows/<target>/<installer>/setup.exe
 ```
 
 Full CLI, `CRAP.toml`, and `libcrapapp` documentation lives in [docs.md](docs.md)
 and is rendered as the crate documentation on docs.rs.
-

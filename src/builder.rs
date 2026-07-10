@@ -4,9 +4,9 @@ use std::process::Command;
 
 use anyhow::{Context, Result, bail};
 
-use crate::services::build_manifest::BuildManifest;
-use crate::services::platform_manifest::{PlatformBuildManifest, PlatformManifest};
-use crate::services::windows_bundler::WindowsBundler;
+use crate::build_manifest::BuildManifest;
+use crate::platform_manifest::{PlatformBuildManifest, PlatformManifest};
+use crate::windows_bundler::WindowsBundler;
 
 pub struct Builder<'a> {
     build_manifest: &'a BuildManifest,

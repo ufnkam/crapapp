@@ -3,7 +3,7 @@ use std::str::FromStr;
 use anyhow::{Context, Result};
 use serde::Serialize;
 
-use crate::services::payload_file::PayloadFile;
+use crate::payload_file::PayloadFile;
 
 #[derive(
     Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, strum::EnumString, strum::Display,

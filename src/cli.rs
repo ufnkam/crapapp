@@ -10,9 +10,9 @@ use std::ffi::OsString;
 use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
 
-use crate::services::{
-    BuildManifest, BuildManifestFormatter, Builder, CrapManifest, MANIFEST_PATH,
-};
+use crate::build_manifest::{BuildManifest, BuildManifestFormatter};
+use crate::builder::Builder;
+use crate::manifest_file::{CrapManifest, MANIFEST_PATH};
 
 #[derive(Debug, Parser)]
 #[command(name = "crapapp")]

@@ -44,6 +44,7 @@ pub struct Shortcut {
     pub target: String,
     pub name: String,
     pub directory: Option<String>,
+    pub icon: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]

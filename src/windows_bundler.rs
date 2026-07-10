@@ -7,31 +7,31 @@ use image::ImageReader;
 use minijinja::{Environment, context};
 use serde_json::{Value, json};
 
-use crate::services::build_manifest::BuildManifest;
-use crate::services::manifest_file::{EulaFile, WindowsInstaller};
-use crate::services::payload_file::PayloadFile;
-use crate::services::platform_manifests::WindowsPlatformManifest;
-use crate::services::target_manifest::Shortcut;
+use crate::build_manifest::BuildManifest;
+use crate::manifest_file::{EulaFile, WindowsInstaller};
+use crate::payload_file::PayloadFile;
+use crate::platform_manifests::WindowsPlatformManifest;
+use crate::target_manifest::{Shortcut, TargetManifest};
 
-const SETUP_CARGO_TOML: &str = include_str!("../../assets/windows-installer/Cargo.toml.j2");
-const SETUP_BUILD_RS: &str = include_str!("../../assets/windows-installer/build.rs.j2");
-const SETUP_RS: &str = include_str!("../../assets/windows-installer/main.rs.j2");
-const UNINSTALL_RS: &str = include_str!("../../assets/windows-installer/uninstall.rs.j2");
-const INSTALL_ICON: &[u8] = include_bytes!("../../assets/windows-installer/install.ico");
+const SETUP_CARGO_TOML: &str = include_str!("../assets/windows-installer/Cargo.toml.j2");
+const SETUP_BUILD_RS: &str = include_str!("../assets/windows-installer/build.rs.j2");
+const SETUP_RS: &str = include_str!("../assets/windows-installer/main.rs.j2");
+const UNINSTALL_RS: &str = include_str!("../assets/windows-installer/uninstall.rs.j2");
+const INSTALL_ICON: &[u8] = include_bytes!("../assets/windows-installer/install.ico");
 const LIBCRAPAPP_VERSION: &str = "0.2.0";
 const SETUP_CONFIG: &str = "setup-config.json";
 const DISPLAY_ICON_SIZE: u32 = 256;
 
 pub struct WindowsBundler<'a> {
     build_manifest: &'a BuildManifest,
-    platform: &'a WindowsPlatformManifest,
+    platform: &'a WindowsPlatformManifest<TargetManifest>,
     build_dir: &'a Path,
 }
 
 impl<'a> WindowsBundler<'a> {
     pub fn new(
         build_manifest: &'a BuildManifest,
-        platform: &'a WindowsPlatformManifest,
+        platform: &'a WindowsPlatformManifest<TargetManifest>,
         build_dir: &'a Path,
     ) -> Self {
         Self {
@@ -43,31 +43,43 @@ impl<'a> WindowsBundler<'a> {
 
     pub fn bundle(&self) -> anyhow::Result<()> {
         for target in &self.platform.targets {
-            let output_dir = self.build_dir.join(&self.platform.platform).join(&target.target);
-            let setup_source_dir = output_dir.join("setup-src");
-            let setup_output = output_dir.join("setup.exe");
+            for installer in &self.platform.installer {
+                let output_dir = installer_output_dir(
+                    self.build_dir,
+                    &self.platform.platform,
+                    &target.target,
+                    *installer,
+                );
+                let setup_source_dir = output_dir.join("setup-src");
+                let setup_output = output_dir.join(installer.output_file_name());
 
-            remove_dir_if_exists(&setup_source_dir)?;
-            fs::create_dir_all(&output_dir)
-                .with_context(|| format!("failed to create {}", output_dir.display()))?;
-            fs::create_dir_all(setup_source_dir.join("src")).with_context(|| {
-                format!(
-                    "failed to create setup project at {}",
-                    setup_source_dir.display()
-                )
-            })?;
+                remove_dir_if_exists(&setup_source_dir)?;
+                fs::create_dir_all(&output_dir)
+                    .with_context(|| format!("failed to create {}", output_dir.display()))?;
+                fs::create_dir_all(setup_source_dir.join("src")).with_context(|| {
+                    format!(
+                        "failed to create setup project at {}",
+                        setup_source_dir.display()
+                    )
+                })?;
 
-            self.write_setup_project(
-                self.platform,
-                &target.files,
-                &target.shortcuts,
-                &setup_source_dir,
-            )?;
-            self.build_uninstaller(&target.target, &setup_source_dir)?;
-            self.write_setup_rs_with_uninstaller(self.platform, &target.target, &setup_source_dir)?;
-            self.build_setup(&target.target, &setup_source_dir)?;
-            self.copy_setup_output(&target.target, &setup_source_dir, &setup_output)?;
-            self.clean_setup_source(&setup_source_dir)?;
+                self.write_setup_project(
+                    self.platform,
+                    *installer,
+                    &target.files,
+                    &target.shortcuts,
+                    &setup_source_dir,
+                )?;
+                self.build_uninstaller(&target.target, &setup_source_dir, *installer)?;
+                self.write_setup_rs_with_uninstaller(
+                    self.platform,
+                    &target.target,
+                    &setup_source_dir,
+                )?;
+                self.build_setup(&target.target, &setup_source_dir, *installer)?;
+                self.copy_setup_output(&target.target, &setup_source_dir, &setup_output)?;
+                self.clean_setup_source(&setup_source_dir)?;
+            }
         }
 
         Ok(())
@@ -75,7 +87,8 @@ impl<'a> WindowsBundler<'a> {
 
     fn write_setup_project(
         &self,
-        platform: &WindowsPlatformManifest,
+        platform: &WindowsPlatformManifest<TargetManifest>,
+        installer: WindowsInstaller,
         files: &[PayloadFile],
         shortcuts: &[Shortcut],
         setup_source_dir: &Path,
@@ -86,7 +99,7 @@ impl<'a> WindowsBundler<'a> {
 
         fs::write(
             setup_source_dir.join("Cargo.toml"),
-            setup_cargo_toml(platform)?,
+            setup_cargo_toml(installer)?,
         )
         .with_context(|| "failed to write setup Cargo.toml")?;
         fs::write(
@@ -98,19 +111,24 @@ impl<'a> WindowsBundler<'a> {
         write_setup_assets(setup_source_dir, platform.display_icon_source.as_deref())?;
         fs::write(
             setup_source_dir.join("src").join("main.rs"),
-            render_setup_template("main.rs.j2", SETUP_RS, platform)?,
+            render_setup_template("main.rs.j2", SETUP_RS, installer)?,
         )
         .with_context(|| "failed to write setup main.rs")?;
         fs::write(
             setup_source_dir.join("src").join("uninstall.rs"),
-            render_setup_template("uninstall.rs.j2", UNINSTALL_RS, platform)?,
+            render_setup_template("uninstall.rs.j2", UNINSTALL_RS, installer)?,
         )
         .with_context(|| "failed to write uninstall.rs")?;
 
         Ok(())
     }
 
-    fn build_uninstaller(&self, target: &str, setup_source_dir: &Path) -> Result<()> {
+    fn build_uninstaller(
+        &self,
+        target: &str,
+        setup_source_dir: &Path,
+        installer: WindowsInstaller,
+    ) -> Result<()> {
         remove_dir_if_exists(&setup_source_dir.join("target"))?;
 
         let status = Command::new("cargo")
@@ -124,10 +142,18 @@ impl<'a> WindowsBundler<'a> {
             .arg("uninstall")
             .current_dir(setup_source_dir)
             .status()
-            .with_context(|| format!("failed to build uninstall.exe for {target}"))?;
+            .with_context(|| {
+                format!(
+                    "failed to build uninstall.exe for {target} ({})",
+                    installer.output_directory()
+                )
+            })?;
 
         if !status.success() {
-            bail!("uninstall.exe build failed for {target}");
+            bail!(
+                "uninstall.exe build failed for {target} ({})",
+                installer.output_directory()
+            );
         }
 
         Ok(())
@@ -135,7 +161,7 @@ impl<'a> WindowsBundler<'a> {
 
     fn write_setup_rs_with_uninstaller(
         &self,
-        platform: &WindowsPlatformManifest,
+        platform: &WindowsPlatformManifest<TargetManifest>,
         target: &str,
         setup_source_dir: &Path,
     ) -> Result<()> {
@@ -183,7 +209,7 @@ impl<'a> WindowsBundler<'a> {
 
     fn write_setup_build_input(
         &self,
-        platform: &WindowsPlatformManifest,
+        platform: &WindowsPlatformManifest<TargetManifest>,
         files: &[PayloadFile],
         shortcuts: &[Shortcut],
         uninstaller_source: Option<&Path>,
@@ -222,7 +248,12 @@ impl<'a> WindowsBundler<'a> {
         Ok(())
     }
 
-    fn build_setup(&self, target: &str, setup_source_dir: &Path) -> Result<()> {
+    fn build_setup(
+        &self,
+        target: &str,
+        setup_source_dir: &Path,
+        installer: WindowsInstaller,
+    ) -> Result<()> {
         remove_dir_if_exists(&setup_source_dir.join("target"))?;
 
         let status = Command::new("cargo")
@@ -236,10 +267,18 @@ impl<'a> WindowsBundler<'a> {
             .arg("setup")
             .current_dir(setup_source_dir)
             .status()
-            .with_context(|| format!("failed to build setup.exe for {target}"))?;
+            .with_context(|| {
+                format!(
+                    "failed to build setup.exe for {target} ({})",
+                    installer.output_directory()
+                )
+            })?;
 
         if !status.success() {
-            bail!("setup.exe build failed for {target}");
+            bail!(
+                "setup.exe build failed for {target} ({})",
+                installer.output_directory()
+            );
         }
 
         Ok(())
@@ -304,8 +343,20 @@ fn release_exe_path(target: &str, setup_source_dir: &Path, name: &str) -> PathBu
         .join(format!("{name}.exe"))
 }
 
-fn setup_cargo_toml(platform: &WindowsPlatformManifest) -> Result<String> {
-    let dependencies = libcrapapp_dependency(platform)?;
+fn installer_output_dir(
+    build_dir: &Path,
+    platform: &str,
+    target: &str,
+    installer: WindowsInstaller,
+) -> PathBuf {
+    build_dir
+        .join(platform)
+        .join(target)
+        .join(installer.output_directory())
+}
+
+fn setup_cargo_toml(installer: WindowsInstaller) -> Result<String> {
+    let dependencies = libcrapapp_dependency(installer)?;
     let environment = Environment::new();
     let template = environment
         .template_from_str(SETUP_CARGO_TOML)
@@ -333,7 +384,7 @@ fn render_static_template(name: &str, source: &str) -> Result<String> {
 fn render_setup_template(
     name: &str,
     source: &str,
-    platform: &WindowsPlatformManifest,
+    installer: WindowsInstaller,
 ) -> Result<String> {
     let environment = Environment::new();
     let template = environment
@@ -342,15 +393,12 @@ fn render_setup_template(
 
     template
         .render(context! {
-            gui_installer => matches!(
-                platform.installer.unwrap_or_default(),
-                WindowsInstaller::Gui
-            ),
+            gui_installer => matches!(installer, WindowsInstaller::Gui),
         })
         .with_context(|| format!("failed to render {name} template"))
 }
 
-fn libcrapapp_dependency(platform: &WindowsPlatformManifest) -> Result<LibcrapappDependency> {
+fn libcrapapp_dependency(installer: WindowsInstaller) -> Result<LibcrapappDependency> {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
     let source = if manifest_dir.join("src").join("lib.rs").is_file() {
         let manifest_dir = fs::canonicalize(manifest_dir)
@@ -363,11 +411,11 @@ fn libcrapapp_dependency(platform: &WindowsPlatformManifest) -> Result<Libcrapap
     } else {
         format!(r#"package = "cargo-crapapp", version = "{LIBCRAPAPP_VERSION}""#)
     };
-    let feature = platform.installer.unwrap_or_default().cargo_feature();
+    let feature = installer.cargo_feature();
 
     Ok(LibcrapappDependency {
         runtime: format!(r#"{{ {source}, default-features = false, features = ["{feature}"] }}"#),
-        build: format!(r#"{{ {source}, default-features = false }}"#),
+        build: format!(r#"{{ {source}, default-features = false, features = ["windows"] }}"#),
     })
 }
 

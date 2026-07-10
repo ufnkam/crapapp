@@ -1,8 +1,6 @@
 use std::fmt::Debug;
 
-use crate::services::{
-    platform_manifests::WindowsPlatformManifest, target_manifest::TargetManifest,
-};
+use crate::{platform_manifests::WindowsPlatformManifest, target_manifest::TargetManifest};
 use serde::{Deserialize, Serialize};
 
 pub trait PlatformManifest: Debug + Serialize {
@@ -14,7 +12,7 @@ pub trait PlatformManifest: Debug + Serialize {
 #[derive(Debug, Serialize)]
 #[serde(untagged)]
 pub enum PlatformBuildManifest {
-    Windows(WindowsPlatformManifest),
+    Windows(WindowsPlatformManifest<TargetManifest>),
     Macos(BasicPlatformManifest),
     Linux(BasicPlatformManifest),
 }
