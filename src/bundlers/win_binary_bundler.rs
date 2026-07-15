@@ -27,7 +27,7 @@ const SETUP_CONFIG: &str = "setup-config.json";
 const DISPLAY_ICON_SIZE: u32 = 256;
 
 fn init_cargo_project(
-    project_dir: &PathBuf,
+    project_dir: &Path,
     installer_kind: &WindowsInstallerKind,
 ) -> anyhow::Result<()> {
     let jinja_env = Environment::new();
@@ -158,7 +158,7 @@ pub fn libcrapapp_dependency(
 }
 
 pub fn gen_setup_assets(assets_dir: &Path) -> anyhow::Result<()> {
-    fs::create_dir_all(&assets_dir)
+    fs::create_dir_all(assets_dir)
         .with_context(|| format!("failed to create {}", assets_dir.display()))?;
     let install_icon = assets_dir.join("install.ico");
 
