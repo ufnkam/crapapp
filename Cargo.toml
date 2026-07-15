@@ -48,6 +48,9 @@ serde-bool = "0.1.4"
 
 [features]
 default = []
+dev = []
+cli = ["windows-cli"]
+gui = ["windows-gui"]
 windows = ["dep:winresource"]
 windows-cli = ["windows"]
 windows-gui = ["windows", "dep:directories", "dep:iced", "dep:rfd"]

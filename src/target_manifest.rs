@@ -104,11 +104,18 @@ impl TargetManifest {
     }
 }
 
-fn shortcut_icon_payload(source: &str, install_path: Option<&str>, bin_dir: &str) -> Result<PayloadFile> {
+fn shortcut_icon_payload(
+    source: &str,
+    install_path: Option<&str>,
+    bin_dir: &str,
+) -> Result<PayloadFile> {
     let source_path = Path::new(source);
 
     if !source_path.is_file() {
-        bail!("shortcut icon source {} does not exist", source_path.display());
+        bail!(
+            "shortcut icon source {} does not exist",
+            source_path.display()
+        );
     }
 
     Ok(PayloadFile::data(
@@ -137,7 +144,10 @@ fn shortcut_icon_destination(
 }
 
 fn push_payload_file(files: &mut Vec<PayloadFile>, payload: PayloadFile) -> Result<()> {
-    if let Some(existing) = files.iter().find(|file| file.destination == payload.destination) {
+    if let Some(existing) = files
+        .iter()
+        .find(|file| file.destination == payload.destination)
+    {
         if existing.source != payload.source || existing.executable != payload.executable {
             bail!(
                 "payload destination {} is produced by both {} and {}",

@@ -1,8 +1,8 @@
+use crate::bundlers::WindowsInstallerKind;
+use crate::platform_manifests::WindowsPlatformManifest;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::path::Path;
-
-use crate::platform_manifests::WindowsPlatformManifest;
 
 pub const MANIFEST_PATH: &str = "CRAP.toml";
 
@@ -206,59 +206,32 @@ fn default_true() -> bool {
     true
 }
 
-#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, Eq, PartialEq)]
-#[serde(rename_all = "kebab-case")]
-pub enum WindowsInstaller {
-    #[default]
-    Cli,
-    Gui,
-}
-
-impl WindowsInstaller {
-    pub fn cargo_feature(self) -> &'static str {
-        match self {
-            WindowsInstaller::Cli => "windows-cli",
-            WindowsInstaller::Gui => "windows-gui",
-        }
-    }
-
-    pub fn output_directory(self) -> &'static str {
-        match self {
-            WindowsInstaller::Cli => "cli",
-            WindowsInstaller::Gui => "gui",
-        }
-    }
-
-    pub fn output_file_name(self) -> &'static str {
-        match self {
-            WindowsInstaller::Cli | WindowsInstaller::Gui => "setup.exe",
-        }
-    }
-}
-
 pub(crate) fn deserialize_windows_installers<'de, D>(
     deserializer: D,
-) -> Result<Vec<WindowsInstaller>, D::Error>
+) -> Result<Vec<WindowsInstallerKind>, D::Error>
 where
     D: Deserializer<'de>,
 {
     #[derive(Deserialize)]
     #[serde(untagged)]
     enum WindowsInstallerList {
-        One(WindowsInstaller),
-        Many(Vec<WindowsInstaller>),
+        One(WindowsInstallerKind),
+        Many(Vec<WindowsInstallerKind>),
     }
 
-    Ok(match Option::<WindowsInstallerList>::deserialize(deserializer)? {
-        Some(WindowsInstallerList::One(installer)) => vec![installer],
-        Some(WindowsInstallerList::Many(installers)) => installers,
-        None => Vec::new(),
-    })
+    Ok(
+        match Option::<WindowsInstallerList>::deserialize(deserializer)? {
+            Some(WindowsInstallerList::One(installer)) => vec![installer],
+            Some(WindowsInstallerList::Many(installers)) => installers,
+            None => Vec::new(),
+        },
+    )
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{CrapManifest, WindowsInstaller};
+    use super::CrapManifest;
+    use crate::bundlers::WindowsInstallerKind;
 
     fn parse_manifest(source: &str) -> CrapManifest {
         toml::from_str(source).expect("manifest should parse")
@@ -274,7 +247,7 @@ mod tests {
         );
 
         let windows = manifest.windows.expect("windows platform should exist");
-        assert_eq!(windows.installers(), vec![WindowsInstaller::Cli]);
+        assert_eq!(windows.installers(), vec![WindowsInstallerKind::Cli]);
     }
 
     #[test]
@@ -288,7 +261,7 @@ mod tests {
         );
 
         let windows = manifest.windows.expect("windows platform should exist");
-        assert_eq!(windows.installers(), vec![WindowsInstaller::Gui]);
+        assert_eq!(windows.installers(), vec![WindowsInstallerKind::Gui]);
     }
 
     #[test]
@@ -304,7 +277,7 @@ mod tests {
         let windows = manifest.windows.expect("windows platform should exist");
         assert_eq!(
             windows.installers(),
-            vec![WindowsInstaller::Cli, WindowsInstaller::Gui]
+            vec![WindowsInstallerKind::Cli, WindowsInstallerKind::Gui]
         );
     }
 
@@ -321,7 +294,7 @@ mod tests {
         let windows = manifest.windows.expect("windows platform should exist");
         assert_eq!(
             windows.installers(),
-            vec![WindowsInstaller::Gui, WindowsInstaller::Cli]
+            vec![WindowsInstallerKind::Gui, WindowsInstallerKind::Cli]
         );
     }
 

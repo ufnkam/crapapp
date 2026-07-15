@@ -5,8 +5,8 @@ use std::process::Command;
 use anyhow::{Context, Result, bail};
 
 use crate::build_manifest::BuildManifest;
+use crate::bundlers::WindowsBundler;
 use crate::platform_manifest::{PlatformBuildManifest, PlatformManifest};
-use crate::windows_bundler::WindowsBundler;
 
 pub struct Builder<'a> {
     build_manifest: &'a BuildManifest,

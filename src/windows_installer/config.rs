@@ -5,14 +5,14 @@ pub const ADD_TO_PATH_VARIABLE: &str = "ADD_TO_PATH";
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct PayloadEntry {
-    #[serde(skip_serializing, default)]
-    source: Option<String>,
+    #[serde(default)]
+    pub source: Option<String>,
     pub destination: String,
     pub executable: bool,
     #[serde(default)]
-    offset: usize,
+    pub offset: usize,
     #[serde(default)]
-    len: usize,
+    pub len: usize,
     #[serde(skip, default)]
     pub bytes: &'static [u8],
 }
@@ -25,6 +25,7 @@ impl PayloadEntry {
     }
 
     pub fn with_range(mut self, offset: usize, len: usize) -> Self {
+        self.source = None;
         self.offset = offset;
         self.len = len;
         self
@@ -77,7 +78,7 @@ pub struct InstallerConfig {
     pub publisher: Option<String>,
     #[serde(rename = "variables")]
     pub required_variables: Vec<String>,
-    #[serde(skip_serializing, default)]
+    #[serde(default)]
     pub uninstaller_source: String,
     #[serde(skip, default)]
     pub uninstaller_bytes: &'static [u8],

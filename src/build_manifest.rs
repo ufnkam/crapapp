@@ -8,9 +8,7 @@ use crate::manifest_file::{
     CrapManifest, PlatformConfig, PlatformManifest as SourcePlatformManifest,
 };
 use crate::payload_file::{payload_files, resolve_destination};
-use crate::platform_manifest::{
-    BasicPlatformManifest, PlatformBuildManifest, PlatformManifest,
-};
+use crate::platform_manifest::{BasicPlatformManifest, PlatformBuildManifest, PlatformManifest};
 use crate::target_manifest::TargetManifest;
 use std::path::Path;
 
@@ -53,15 +51,13 @@ impl BuildManifest {
             }
 
             platforms.push(Box::new(match &platform {
-                PlatformConfig::Windows(windows) => {
-                    PlatformBuildManifest::Windows(windows.build(
-                        &files,
-                        targets,
-                        &variable_sources,
-                        display_icon.as_deref(),
-                        display_icon_source,
-                    )?)
-                }
+                PlatformConfig::Windows(windows) => PlatformBuildManifest::Windows(windows.build(
+                    &files,
+                    targets,
+                    &variable_sources,
+                    display_icon.as_deref(),
+                    display_icon_source,
+                )?),
                 PlatformConfig::Macos(_) => PlatformBuildManifest::Macos(
                     BasicPlatformManifest::new(platform.name(), targets),
                 ),

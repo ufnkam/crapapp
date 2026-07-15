@@ -1,10 +1,9 @@
 use serde::{Deserialize, Serialize};
 
+use crate::bundlers::WindowsInstallerKind;
 use crate::{
     build_variable::{BuildVariable, get_platform_variables},
-    manifest_file::{
-        AssociatedFile, EulaFile, FileMapping, ShortcutMapping, WindowsInstaller, WindowsTarget,
-    },
+    manifest_file::{AssociatedFile, EulaFile, FileMapping, ShortcutMapping, WindowsTarget},
     payload_file::PayloadFile,
     platform_manifest::PlatformManifest,
     target_manifest::TargetManifest,
@@ -21,8 +20,11 @@ pub struct WindowsPlatformManifest<Target = WindowsTarget> {
     pub platform: String,
     #[serde(default)]
     pub targets: Vec<Target>,
-    #[serde(default, deserialize_with = "crate::manifest_file::deserialize_windows_installers")]
-    pub installer: Vec<WindowsInstaller>,
+    #[serde(
+        default,
+        deserialize_with = "crate::manifest_file::deserialize_windows_installers"
+    )]
+    pub installer: Vec<WindowsInstallerKind>,
     pub install_path: Option<String>,
     pub bin_dir: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -41,9 +43,9 @@ pub struct WindowsPlatformManifest<Target = WindowsTarget> {
 }
 
 impl<Target> WindowsPlatformManifest<Target> {
-    pub fn installers(&self) -> Vec<WindowsInstaller> {
+    pub fn installers(&self) -> Vec<WindowsInstallerKind> {
         let installers = if self.installer.is_empty() {
-            vec![WindowsInstaller::Cli]
+            vec![WindowsInstallerKind::Cli]
         } else {
             self.installer.clone()
         };
@@ -128,7 +130,7 @@ impl PlatformManifest for WindowsPlatformManifest<TargetManifest> {
             let installers = self
                 .installer
                 .iter()
-                .map(|installer| installer.output_directory())
+                .map(|installer| installer.to_string())
                 .collect::<Vec<_>>()
                 .join(", ");
 
