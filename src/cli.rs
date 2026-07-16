@@ -32,6 +32,12 @@ enum Command {
     },
     /// Build configured cargo packages for configured platform targets.
     Build,
+    /// Build installers and self-contained app bundles.
+    Bundle {
+        /// Skip building configured cargo packages before bundling.
+        #[arg(short = 'n', long)]
+        no_build: bool,
+    },
 }
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
@@ -56,6 +62,12 @@ pub fn run_cli() -> Result<()> {
             let build_manifest = BuildManifest::from_crap_manifest(&manifest)?;
 
             Builder::new(&build_manifest).build()?;
+        }
+        Command::Bundle { no_build } => {
+            let manifest = CrapManifest::load(MANIFEST_PATH)?;
+            let build_manifest = BuildManifest::from_crap_manifest(&manifest)?;
+
+            Builder::new(&build_manifest).bundle(!no_build)?;
         }
     }
 

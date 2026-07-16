@@ -37,6 +37,8 @@ trap and normal packaging tools are politically unavailable.
 cargo crapapp inspect
 cargo crapapp inspect --output json
 cargo crapapp build
+cargo crapapp bundle
+cargo crapapp bundle --no-build
 ```
 
 Windows output currently lands in:

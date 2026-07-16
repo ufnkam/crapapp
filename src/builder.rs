@@ -19,33 +19,25 @@ impl<'a> Builder<'a> {
 
     pub fn build(&self) -> Result<()> {
         let build_root = build_root()?;
-        let build_dir = build_root.join(".crapapp_build");
-        reset_build_dir(&build_dir)?;
 
         for platform in &self.build_manifest.platforms {
             for target in platform.targets() {
-                let mut command = Command::new("cargo");
-                command.current_dir(&build_root);
-                command.arg("build").arg("--release");
-                command.arg("--target-dir").arg(build_root.join("target"));
-                command.arg("--target").arg(target);
+                build_target(&build_root, self.build_manifest, target)?;
+            }
+        }
 
-                for package in &self.build_manifest.build.packages {
-                    command.arg("--package").arg(package);
-                }
+        Ok(())
+    }
 
-                if !self.build_manifest.build.features.is_empty() {
-                    command
-                        .arg("--features")
-                        .arg(self.build_manifest.build.features.join(" "));
-                }
+    pub fn bundle(&self, build: bool) -> Result<()> {
+        let build_root = build_root()?;
+        let build_dir = build_root.join(".crapapp_build");
+        reset_build_dir(&build_dir)?;
 
-                let status = command
-                    .status()
-                    .with_context(|| format!("failed to run cargo build for {target}"))?;
-
-                if !status.success() {
-                    bail!("cargo build failed for {target}");
+        if build {
+            for platform in &self.build_manifest.platforms {
+                for target in platform.targets() {
+                    build_target(&build_root, self.build_manifest, target)?;
                 }
             }
         }
@@ -58,6 +50,34 @@ impl<'a> Builder<'a> {
 
         Ok(())
     }
+}
+
+fn build_target(build_root: &Path, build_manifest: &BuildManifest, target: &str) -> Result<()> {
+    let mut command = Command::new("cargo");
+    command.current_dir(build_root);
+    command.arg("build").arg("--release");
+    command.arg("--target-dir").arg(build_root.join("target"));
+    command.arg("--target").arg(target);
+
+    for package in &build_manifest.build.packages {
+        command.arg("--package").arg(package);
+    }
+
+    if !build_manifest.build.features.is_empty() {
+        command
+            .arg("--features")
+            .arg(build_manifest.build.features.join(" "));
+    }
+
+    let status = command
+        .status()
+        .with_context(|| format!("failed to run cargo build for {target}"))?;
+
+    if !status.success() {
+        bail!("cargo build failed for {target}");
+    }
+
+    Ok(())
 }
 
 fn build_root() -> Result<PathBuf> {

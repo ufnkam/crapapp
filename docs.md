@@ -44,8 +44,16 @@ Options:
 ### `cargo crapapp build`
 
 Reads `CRAP.toml`, builds configured Cargo packages for configured platform
+targets, and writes the binaries to the configured Cargo target directory.
+
+### `cargo crapapp bundle`
+
+Reads `CRAP.toml`, builds configured Cargo packages for configured platform
 targets, collects payload files, and writes generated output under
 `.crapapp_build`.
+
+Use `cargo crapapp bundle --no-build` or `cargo crapapp bundle -n` to skip
+building configured Cargo packages before bundling existing binaries.
 
 Windows installer output currently lands in:
 
@@ -321,7 +329,7 @@ Fields:
 Linux and macOS installable output are not supported yet.
 
 The manifest parser accepts `[linux]` and `[macos]` sections so the build
-manifest shape can evolve across platforms, but `cargo crapapp build` does not
+manifest shape can evolve across platforms, but `cargo crapapp bundle` does not
 produce Linux packages, macOS `.app` bundles, or self-contained Linux/macOS apps
 yet.
 
@@ -338,7 +346,7 @@ Current public entrypoints:
 
 The `cargo-crapapp` binary intentionally stays tiny:
 
-```rust
+```rust,ignore
 use libcrapapp::run_cli;
 
 fn main() -> anyhow::Result<()> {
