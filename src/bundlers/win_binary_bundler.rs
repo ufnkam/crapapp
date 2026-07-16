@@ -367,13 +367,7 @@ impl WinBinaryBundler {
         build_bin(&builder_space, target, "uninstall")
             .with_context(|| format!("failed to build {} uninstaller", inst_mode))?;
         let embedded_uninstaller = assets_dir.join(uninstaller_bin);
-        fs::copy(target_dir.join(uninstaller_bin), &embedded_uninstaller).with_context(|| {
-            format!(
-                "failed to copy {} to {}",
-                target_dir.join(uninstaller_bin).display(),
-                embedded_uninstaller.display()
-            )
-        })?;
+        fs::copy(target_dir.join(uninstaller_bin), &embedded_uninstaller)?;
         let embedded_uninstaller = fs::canonicalize(&embedded_uninstaller).with_context(|| {
             format!(
                 "failed to find copied uninstall.exe at {}",
@@ -396,14 +390,7 @@ impl WinBinaryBundler {
         fs::copy(
             target_dir.join(installer_bin),
             project_space.join(installer_bin),
-        )
-        .with_context(|| {
-            format!(
-                "failed to copy {} to {}",
-                target_dir.join(installer_bin).display(),
-                project_space.join(installer_bin).display()
-            )
-        })?;
+        )?;
         fs::remove_dir_all(builder_space)?;
         Ok(())
     }
