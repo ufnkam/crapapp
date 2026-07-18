@@ -1,9 +1,5 @@
-use clap::Parser;
-
-#[derive(Debug, Parser)]
-#[command(name = "example")]
-#[command(about = "Tiny example CLI for cargo-crapapp")]
-struct Cli {}
+use std::io;
+use std::io::Read;
 
 fn main() {
     println!("Hello and burn this world!");
@@ -18,5 +14,6 @@ fn main() {
         println!("I'm not using some_feature!")
     }
 
-    let _cli = Cli::parse();
+    println!("Press anything to exit...");
+    io::stdin().read_exact(&mut [0u8]).unwrap();
 }

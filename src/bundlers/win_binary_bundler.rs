@@ -1,5 +1,6 @@
 use crate::build_manifest::BuildManifest;
 use crate::bundlers::WindowsInstallerKind;
+use crate::bundlers::shared;
 use crate::manifest_file::{AssociatedFileKind as ManifestAssociatedFileKind, EulaFile};
 use crate::payload_file::PayloadFile;
 use crate::platform_manifests::WindowsPlatformManifest;
@@ -268,14 +269,7 @@ fn setup_display_icon(source: Option<&str>) -> anyhow::Result<Option<DisplayIcon
         return Ok(None);
     };
     let path = Path::new(source);
-    let supported = path
-        .extension()
-        .and_then(|extension| extension.to_str())
-        .is_some_and(|extension| {
-            extension.eq_ignore_ascii_case("ico") || extension.eq_ignore_ascii_case("png")
-        });
-
-    if !supported {
+    if !shared::path_has_extension(path, &["ico", "png"]) {
         bail!(
             "display icon {} must be a .ico or .png file",
             path.display()
@@ -320,14 +314,6 @@ fn build_bin(build_space: &Path, target: &str, bin: &str) -> anyhow::Result<()> 
     Ok(())
 }
 
-fn remove_dir_if_exists(path: &Path) -> anyhow::Result<()> {
-    if path.exists() {
-        fs::remove_dir_all(path).with_context(|| format!("failed to remove {}", path.display()))?;
-    }
-
-    Ok(())
-}
-
 pub struct WinBinaryBundler {}
 impl WinBinaryBundler {
     pub fn bundle(
@@ -363,7 +349,11 @@ impl WinBinaryBundler {
             &builder_space.join(SETUP_CONFIG),
         )?;
 
-        remove_dir_if_exists(&cargo_target_dir)?;
+        if cargo_target_dir.exists() {
+            fs::remove_dir_all(&cargo_target_dir)
+                .with_context(|| format!("failed to remove {}", cargo_target_dir.display()))?;
+        }
+
         build_bin(&builder_space, target, "uninstall")
             .with_context(|| format!("failed to build {} uninstaller", inst_mode))?;
         let embedded_uninstaller = assets_dir.join(uninstaller_bin);
@@ -384,7 +374,11 @@ impl WinBinaryBundler {
             &builder_space.join(SETUP_CONFIG),
         )?;
 
-        remove_dir_if_exists(&cargo_target_dir)?;
+        if cargo_target_dir.exists() {
+            fs::remove_dir_all(&cargo_target_dir)
+                .with_context(|| format!("failed to remove {}", cargo_target_dir.display()))?;
+        }
+
         build_bin(&builder_space, target, "setup")
             .with_context(|| format!("failed to build {} installer", inst_mode))?;
         fs::copy(

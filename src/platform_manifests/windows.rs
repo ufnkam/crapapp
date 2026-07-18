@@ -22,9 +22,9 @@ pub struct WindowsPlatformManifest<Target = WindowsTarget> {
     pub targets: Vec<Target>,
     #[serde(
         default,
-        deserialize_with = "crate::manifest_file::deserialize_windows_installers"
+        deserialize_with = "crate::manifest_file::deserialize_windows_bundles"
     )]
-    pub installer: Vec<WindowsInstallerKind>,
+    pub bundle: Vec<WindowsInstallerKind>,
     pub install_path: Option<String>,
     pub bin_dir: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -43,21 +43,21 @@ pub struct WindowsPlatformManifest<Target = WindowsTarget> {
 }
 
 impl<Target> WindowsPlatformManifest<Target> {
-    pub fn installers(&self) -> Vec<WindowsInstallerKind> {
-        let installers = if self.installer.is_empty() {
+    pub fn bundles(&self) -> Vec<WindowsInstallerKind> {
+        let bundles = if self.bundle.is_empty() {
             vec![WindowsInstallerKind::Cli]
         } else {
-            self.installer.clone()
+            self.bundle.clone()
         };
-        let mut unique_installers = Vec::with_capacity(installers.len());
+        let mut unique_bundles = Vec::with_capacity(bundles.len());
 
-        for installer in installers {
-            if !unique_installers.contains(&installer) {
-                unique_installers.push(installer);
+        for bundle in bundles {
+            if !unique_bundles.contains(&bundle) {
+                unique_bundles.push(bundle);
             }
         }
 
-        unique_installers
+        unique_bundles
     }
 }
 
@@ -93,7 +93,7 @@ impl WindowsPlatformManifest {
         Ok(WindowsPlatformManifest {
             platform: "windows".to_owned(),
             targets,
-            installer: self.installers(),
+            bundle: self.bundles(),
             install_path: self.install_path.clone(),
             bin_dir: self.bin_dir.clone(),
             files: Vec::new(),
@@ -126,15 +126,15 @@ impl PlatformManifest for WindowsPlatformManifest<TargetManifest> {
     fn write_text(&self, output: &mut String) {
         output.push_str(&format!("  {}\n", self.platform()));
 
-        if !self.installer.is_empty() {
-            let installers = self
-                .installer
+        if !self.bundle.is_empty() {
+            let bundles = self
+                .bundle
                 .iter()
-                .map(|installer| installer.to_string())
+                .map(|bundle| bundle.to_string())
                 .collect::<Vec<_>>()
                 .join(", ");
 
-            output.push_str(&format!("    installer: {installers}\n"));
+            output.push_str(&format!("    bundle: {bundles}\n"));
         }
 
         if !self.variables.is_empty() {

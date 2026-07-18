@@ -41,10 +41,11 @@ cargo crapapp bundle
 cargo crapapp bundle --no-build
 ```
 
-Windows output currently lands in:
+Bundler output currently lands in:
 
 ```text
-.crapapp_build/windows/<target>/<installer>/setup.exe
+.crapapp_build/windows/<target>/<bundle>/setup.exe
+.crapapp_build/macos/<target>/<bundle>/<display-name-or-package-name>.app
 ```
 
 Full CLI, `CRAP.toml`, and `libcrapapp` documentation lives in [docs.md](docs.md)

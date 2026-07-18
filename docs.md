@@ -55,13 +55,14 @@ targets, collects payload files, and writes generated output under
 Use `cargo crapapp bundle --no-build` or `cargo crapapp bundle -n` to skip
 building configured Cargo packages before bundling existing binaries.
 
-Windows installer output currently lands in:
+Bundler output currently lands in:
 
 ```text
-.crapapp_build/windows/<target>/<installer>/setup.exe
+.crapapp_build/windows/<target>/<bundle>/setup.exe
+.crapapp_build/macos/<target>/<bundle>/<display-name-or-package-name>.app
 ```
 
-Linux and macOS output are not supported yet.
+Linux output and macOS DMG output are not supported yet.
 
 ## CRAP.toml quick start
 
@@ -78,7 +79,7 @@ features = ["sqlite"]
 [windows]
 targets = ["x86_64-pc-windows-gnu"]
 install_path = "$INSTALLPATH"
-installer = "gui"
+bundle = "gui"
 display_icon = "assets/app.ico"
 files = [
     { source = "assets", destination = "assets" },
@@ -93,6 +94,15 @@ associated_files = [
 ]
 shortcuts = [
     { binary = "acme-launcher", name = "Acme Launcher", directory = "Acme" },
+]
+
+[macos]
+targets = ["aarch64-apple-darwin"]
+bundle = "app"
+display_icon = "assets/app.icns"
+app_binary = "acme-launcher"
+files = [
+    { source = "assets", destination = "assets" },
 ]
 ```
 
@@ -130,7 +140,7 @@ Windows is the only platform with generated installable output right now.
 [windows]
 targets = ["x86_64-pc-windows-gnu"]
 install_path = "$INSTALLPATH"
-installer = "gui"
+bundle = "gui"
 display_icon = "assets/app.ico"
 files = [
     { source = "assets", destination = "assets" },
@@ -151,14 +161,14 @@ MSVC targets only when that toolchain is configured explicitly, for example with
 an LLVM/lld-based setup and Windows SDK import libraries. cargo-crapapp does not
 set up that cross toolchain for you.
 
-### Windows installer mode
+### Windows bundle
 
-`installer` is optional and defaults to `cli`. It accepts either a single value
+`bundle` is optional and defaults to `cli`. It accepts either a single value
 or a list.
 
 ```toml
 [windows]
-installer = "gui"
+bundle = "gui"
 ```
 
 Supported values:
@@ -166,14 +176,14 @@ Supported values:
 - `cli`, generates a command-line setup executable.
 - `gui`, generates a graphical setup executable.
 
-You can build more than one installer for the same target:
+You can build more than one bundle for the same target:
 
 ```toml
 [windows]
-installer = ["cli", "gui"]
+bundle = ["cli", "gui"]
 ```
 
-Outputs are grouped by installer name:
+Outputs are grouped by bundle name:
 
 ```text
 .crapapp_build/windows/<target>/cli/setup.exe
@@ -324,14 +334,46 @@ Fields:
   binaries and points the shortcut at the installed icon file. If omitted, the
   shortcut uses the target executable icon.
 
-## Linux and macOS
+## macOS
 
-Linux and macOS installable output are not supported yet.
+The `[macos]` section creates `.app` bundles. Each configured target produces:
 
-The manifest parser accepts `[linux]` and `[macos]` sections so the build
-manifest shape can evolve across platforms, but `cargo crapapp bundle` does not
-produce Linux packages, macOS `.app` bundles, or self-contained Linux/macOS apps
-yet.
+```text
+.crapapp_build/macos/<target>/<bundle>/<display-name-or-package-name>.app
+```
+
+`bundle` is optional and defaults to `app`. It accepts either a single value
+or a list, matching the Windows bundle field. The only supported macOS bundle
+kind today is `app`.
+
+Application executables are copied into `Contents/MacOS` for the `.app` bundle.
+Extra `files` entries are copied into `Contents/Resources` while preserving
+their configured relative destination paths.
+
+`app_binary` is optional. When set, it names the Cargo binary used as the
+`.app` launcher through `CFBundleExecutable`. If omitted or empty, cargo-crapapp
+falls back to the first executable payload.
+
+The `.app` launcher should be a GUI binary. macOS does not open Terminal when a
+Finder-launched app runs a CLI executable, so stdout/stderr are not visible and
+stdin is not an interactive prompt. Package CLI tools inside `Contents/MacOS`
+only when they are meant to be run directly from a shell, for example:
+
+```sh
+"/Applications/Example App.app/Contents/MacOS/example"
+```
+
+`display_icon` is optional. The source file is copied into `Contents/Resources`.
+When the source is an `.icns` file, `Info.plist` also sets `CFBundleIconFile` so
+macOS can use it as the app icon.
+
+DMG output is not supported yet.
+
+## Linux
+
+Linux installable output is not supported yet. The manifest parser accepts a
+`[linux]` section so the build manifest shape can evolve across platforms, but
+`cargo crapapp bundle` does not produce Linux packages yet.
 
 # libcrapapp
 

@@ -1,20 +1,20 @@
 use std::path::Path;
 
-use crate::bundlers::win_binary_bundler::WinBinaryBundler;
-use crate::platform_manifests::WindowsPlatformManifest;
-use crate::target_manifest::TargetManifest;
-use crate::{build_manifest::BuildManifest, bundlers::windows_installer::WindowsInstallerKind};
+use crate::build_manifest::BuildManifest;
+use crate::bundlers::MacosInstallerKind;
+use crate::bundlers::macos_app_bundler::MacosAppBundler;
+use crate::platform_manifests::MacosPlatformManifest;
 
-pub struct WindowsBundler<'a> {
+pub struct MacosBundler<'a> {
     build_manifest: &'a BuildManifest,
-    platform: &'a WindowsPlatformManifest<TargetManifest>,
+    platform: &'a MacosPlatformManifest,
     build_dir: &'a Path,
 }
 
-impl<'a> WindowsBundler<'a> {
+impl<'a> MacosBundler<'a> {
     pub fn new(
         build_manifest: &'a BuildManifest,
-        platform: &'a WindowsPlatformManifest<TargetManifest>,
+        platform: &'a MacosPlatformManifest,
         build_dir: &'a Path,
     ) -> Self {
         Self {
@@ -28,8 +28,8 @@ impl<'a> WindowsBundler<'a> {
         for target in &self.platform.targets {
             for bundle in &self.platform.bundle {
                 match bundle {
-                    WindowsInstallerKind::Cli | WindowsInstallerKind::Gui => {
-                        WinBinaryBundler::bundle(
+                    MacosInstallerKind::App => {
+                        MacosAppBundler::bundle(
                             self.build_manifest,
                             self.build_dir,
                             self.platform,

@@ -1,4 +1,4 @@
-use crate::bundlers::WindowsInstallerKind;
+use crate::bundlers::{MacosInstallerKind, WindowsInstallerKind};
 use crate::platform_manifests::WindowsPlatformManifest;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Deserializer, Serialize};
@@ -206,7 +206,7 @@ fn default_true() -> bool {
     true
 }
 
-pub(crate) fn deserialize_windows_installers<'de, D>(
+pub(crate) fn deserialize_windows_bundles<'de, D>(
     deserializer: D,
 ) -> Result<Vec<WindowsInstallerKind>, D::Error>
 where
@@ -228,17 +228,39 @@ where
     )
 }
 
+pub(crate) fn deserialize_macos_bundles<'de, D>(
+    deserializer: D,
+) -> Result<Vec<MacosInstallerKind>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum MacosInstallerList {
+        One(MacosInstallerKind),
+        Many(Vec<MacosInstallerKind>),
+    }
+
+    Ok(
+        match Option::<MacosInstallerList>::deserialize(deserializer)? {
+            Some(MacosInstallerList::One(installer)) => vec![installer],
+            Some(MacosInstallerList::Many(installers)) => installers,
+            None => Vec::new(),
+        },
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::CrapManifest;
-    use crate::bundlers::WindowsInstallerKind;
+    use crate::bundlers::{MacosInstallerKind, WindowsInstallerKind};
 
     fn parse_manifest(source: &str) -> CrapManifest {
         toml::from_str(source).expect("manifest should parse")
     }
 
     #[test]
-    fn windows_installer_defaults_to_cli() {
+    fn windows_bundle_defaults_to_cli() {
         let manifest = parse_manifest(
             r#"
             [windows]
@@ -247,53 +269,53 @@ mod tests {
         );
 
         let windows = manifest.windows.expect("windows platform should exist");
-        assert_eq!(windows.installers(), vec![WindowsInstallerKind::Cli]);
+        assert_eq!(windows.bundles(), vec![WindowsInstallerKind::Cli]);
     }
 
     #[test]
-    fn windows_installer_accepts_single_value() {
+    fn windows_bundle_accepts_single_value() {
         let manifest = parse_manifest(
             r#"
             [windows]
             targets = ["x86_64-pc-windows-gnu"]
-            installer = "gui"
+            bundle = "gui"
             "#,
         );
 
         let windows = manifest.windows.expect("windows platform should exist");
-        assert_eq!(windows.installers(), vec![WindowsInstallerKind::Gui]);
+        assert_eq!(windows.bundles(), vec![WindowsInstallerKind::Gui]);
     }
 
     #[test]
-    fn windows_installer_accepts_list() {
+    fn windows_bundle_accepts_list() {
         let manifest = parse_manifest(
             r#"
             [windows]
             targets = ["x86_64-pc-windows-gnu"]
-            installer = ["cli", "gui"]
+            bundle = ["cli", "gui"]
             "#,
         );
 
         let windows = manifest.windows.expect("windows platform should exist");
         assert_eq!(
-            windows.installers(),
+            windows.bundles(),
             vec![WindowsInstallerKind::Cli, WindowsInstallerKind::Gui]
         );
     }
 
     #[test]
-    fn windows_installer_deduplicates_list_without_reordering() {
+    fn windows_bundle_deduplicates_list_without_reordering() {
         let manifest = parse_manifest(
             r#"
             [windows]
             targets = ["x86_64-pc-windows-gnu"]
-            installer = ["gui", "cli", "gui"]
+            bundle = ["gui", "cli", "gui"]
             "#,
         );
 
         let windows = manifest.windows.expect("windows platform should exist");
         assert_eq!(
-            windows.installers(),
+            windows.bundles(),
             vec![WindowsInstallerKind::Gui, WindowsInstallerKind::Cli]
         );
     }
@@ -313,6 +335,75 @@ mod tests {
         let windows = manifest.windows.expect("windows platform should exist");
         assert!(!windows.eulas[0].required());
     }
+
+    #[test]
+    fn macos_display_icon_parses() {
+        let manifest = parse_manifest(
+            r#"
+            [macos]
+            targets = ["aarch64-apple-darwin"]
+            display_icon = "assets/app.icns"
+            "#,
+        );
+
+        let macos = manifest.macos.expect("macos platform should exist");
+        assert_eq!(macos.display_icon.as_deref(), Some("assets/app.icns"));
+    }
+
+    #[test]
+    fn macos_app_binary_parses() {
+        let manifest = parse_manifest(
+            r#"
+            [macos]
+            targets = ["aarch64-apple-darwin"]
+            app_binary = "example-gui"
+            "#,
+        );
+
+        let macos = manifest.macos.expect("macos platform should exist");
+        assert_eq!(macos.app_binary.as_deref(), Some("example-gui"));
+    }
+
+    #[test]
+    fn macos_bundle_defaults_to_app() {
+        let manifest = parse_manifest(
+            r#"
+            [macos]
+            targets = ["aarch64-apple-darwin"]
+            "#,
+        );
+
+        let macos = manifest.macos.expect("macos platform should exist");
+        assert_eq!(macos.bundles(), vec![MacosInstallerKind::App]);
+    }
+
+    #[test]
+    fn macos_bundle_accepts_single_value() {
+        let manifest = parse_manifest(
+            r#"
+            [macos]
+            targets = ["aarch64-apple-darwin"]
+            bundle = "app"
+            "#,
+        );
+
+        let macos = manifest.macos.expect("macos platform should exist");
+        assert_eq!(macos.bundles(), vec![MacosInstallerKind::App]);
+    }
+
+    #[test]
+    fn macos_bundle_accepts_list() {
+        let manifest = parse_manifest(
+            r#"
+            [macos]
+            targets = ["aarch64-apple-darwin"]
+            bundle = ["app", "app"]
+            "#,
+        );
+
+        let macos = manifest.macos.expect("macos platform should exist");
+        assert_eq!(macos.bundles(), vec![MacosInstallerKind::App]);
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -320,8 +411,34 @@ mod tests {
 pub struct MacosPlatform {
     #[serde(default)]
     pub targets: Vec<MacosTarget>,
+    #[serde(
+        default,
+        deserialize_with = "crate::manifest_file::deserialize_macos_bundles"
+    )]
+    pub bundle: Vec<MacosInstallerKind>,
     #[serde(default)]
     pub files: Vec<FileMapping>,
+    pub display_icon: Option<String>,
+    pub app_binary: Option<String>,
+}
+
+impl MacosPlatform {
+    pub fn bundles(&self) -> Vec<MacosInstallerKind> {
+        let bundles = if self.bundle.is_empty() {
+            vec![MacosInstallerKind::App]
+        } else {
+            self.bundle.clone()
+        };
+        let mut unique_bundles = Vec::with_capacity(bundles.len());
+
+        for bundle in bundles {
+            if !unique_bundles.contains(&bundle) {
+                unique_bundles.push(bundle);
+            }
+        }
+
+        unique_bundles
+    }
 }
 
 impl PlatformManifest for MacosPlatform {
@@ -346,7 +463,7 @@ impl PlatformManifest for MacosPlatform {
     }
 
     fn display_icon(&self) -> Option<&str> {
-        None
+        self.display_icon.as_deref()
     }
 
     fn targets(&self) -> Vec<&'static str> {

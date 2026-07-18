@@ -1,7 +1,8 @@
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use serde::Serialize;
 
 use crate::build_config_manifest::BuildConfigManifest;
+use crate::bundlers::shared;
 use crate::cargo_package::CargoPackage;
 use crate::icons::validate_display_icon;
 use crate::manifest_file::{
@@ -9,6 +10,7 @@ use crate::manifest_file::{
 };
 use crate::payload_file::{payload_files, resolve_destination};
 use crate::platform_manifest::{BasicPlatformManifest, PlatformBuildManifest, PlatformManifest};
+use crate::platform_manifests::MacosPlatformManifest;
 use crate::target_manifest::TargetManifest;
 use std::path::Path;
 
@@ -30,9 +32,28 @@ impl BuildManifest {
             validate_display_icon(platform.display_icon())?;
             let mut targets = Vec::new();
             let variable_sources = platform.variable_sources();
-            let display_icon =
-                display_icon_destination(&platform, &cargo_package.name, &cargo_package.binaries);
             let display_icon_source = platform.display_icon();
+            let windows_display_icon =
+                display_icon_destination(&platform, &cargo_package.name, &cargo_package.binaries);
+            let macos_display_icon = match display_icon_source {
+                Some(source) => Some(shared::icon_file_name(source)?.to_owned()),
+                None => None,
+            };
+            let macos_app_binary = match &platform {
+                PlatformConfig::Macos(macos) => {
+                    let app_binary = macos
+                        .app_binary
+                        .as_deref()
+                        .filter(|app_binary| !app_binary.trim().is_empty());
+                    validate_macos_app_binary(app_binary, &cargo_package.binaries)?;
+                    app_binary
+                }
+                PlatformConfig::Windows(_) | PlatformConfig::Linux(_) => None,
+            };
+            let macos_bundles = match &platform {
+                PlatformConfig::Macos(macos) => macos.bundles(),
+                PlatformConfig::Windows(_) | PlatformConfig::Linux(_) => Vec::new(),
+            };
             let shortcuts = match &platform {
                 PlatformConfig::Windows(windows) => windows.shortcuts.as_slice(),
                 PlatformConfig::Macos(_) | PlatformConfig::Linux(_) => &[],
@@ -55,12 +76,18 @@ impl BuildManifest {
                     &files,
                     targets,
                     &variable_sources,
-                    display_icon.as_deref(),
+                    windows_display_icon.as_deref(),
                     display_icon_source,
                 )?),
-                PlatformConfig::Macos(_) => PlatformBuildManifest::Macos(
-                    BasicPlatformManifest::new(platform.name(), targets),
-                ),
+                PlatformConfig::Macos(_) => {
+                    PlatformBuildManifest::Macos(MacosPlatformManifest::new(
+                        targets,
+                        macos_display_icon.as_deref(),
+                        display_icon_source,
+                        macos_app_binary,
+                        macos_bundles,
+                    ))
+                }
                 PlatformConfig::Linux(_) => PlatformBuildManifest::Linux(
                     BasicPlatformManifest::new(platform.name(), targets),
                 ),
@@ -82,6 +109,18 @@ fn validate_shortcut_icons(shortcuts: &[crate::manifest_file::ShortcutMapping]) 
     }
 
     Ok(())
+}
+
+fn validate_macos_app_binary(app_binary: Option<&str>, binary_names: &[String]) -> Result<()> {
+    let Some(app_binary) = app_binary else {
+        return Ok(());
+    };
+
+    if binary_names.iter().any(|binary| binary == app_binary) {
+        return Ok(());
+    }
+
+    bail!("macOS app_binary references unknown binary {app_binary}");
 }
 
 impl BuildManifest {

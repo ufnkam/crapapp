@@ -27,7 +27,7 @@ eulas = [
     { path = "EULA2.txt", required = false },
 ]
 display_icon = "build_assets/icon.ico"
-installer = [ "gui" ]
+bundle = [ "gui" ]
 
 # [linux]
 # targets = [
@@ -36,11 +36,14 @@ installer = [ "gui" ]
 # files = [
 #     { source = "Cargo.toml", destination = "etc/example/Cargo.toml" },
 # ]
-# [macos]
-# targets = [
-#     "x86_64-apple-darwin",
-#     "aarch64-apple-darwin",
-# ]
-# files = [
-#     { source = "Cargo.toml", destination = "etc/example/Cargo.toml" },
-# ]
+[macos]
+targets = [
+    "aarch64-apple-darwin",
+]
+bundle = "app"
+display_icon = "build_assets/icon.icns"
+app_binary = "example"
+files = [
+    { source = "Cargo.toml", destination = "manifests/Cargo.toml" },
+    { source = "some_assets", destination = "some_assets" },
+]
