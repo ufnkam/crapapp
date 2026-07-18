@@ -102,7 +102,7 @@ bundle = "app"
 display_icon = "assets/app.icns"
 app_binary = "acme-launcher"
 files = [
-    { source = "assets", destination = "assets" },
+    { source = "assets", destination = "Resources/assets" },
 ]
 ```
 
@@ -347,8 +347,9 @@ or a list, matching the Windows bundle field. The only supported macOS bundle
 kind today is `app`.
 
 Application executables are copied into `Contents/MacOS` for the `.app` bundle.
-Extra `files` entries are copied into `Contents/Resources` while preserving
-their configured relative destination paths.
+Extra `files` entries are copied to their configured destination relative to
+`Contents`, so `destination = "Resources/assets"` writes to
+`Example App.app/Contents/Resources/assets`.
 
 `app_binary` is optional. When set, it names the Cargo binary used as the
 `.app` launcher through `CFBundleExecutable`. If omitted or empty, cargo-crapapp

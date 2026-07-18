@@ -13,7 +13,6 @@ use crate::target_manifest::TargetManifest;
 
 const CONTENTS_DIR: &str = "Contents";
 const MACOS_DIR: &str = "MacOS";
-const RESOURCES_DIR: &str = "Resources";
 
 pub struct MacosAppBundler {}
 
@@ -43,12 +42,9 @@ impl MacosAppBundler {
 
         let contents_dir = bundle_path.join(CONTENTS_DIR);
         let macos_dir = contents_dir.join(MACOS_DIR);
-        let resources_dir = contents_dir.join(RESOURCES_DIR);
 
         fs::create_dir_all(&macos_dir)
             .with_context(|| format!("failed to create {}", macos_dir.display()))?;
-        fs::create_dir_all(&resources_dir)
-            .with_context(|| format!("failed to create {}", resources_dir.display()))?;
 
         for file in &target_manifest.files {
             let destination = bundle_destination(file, &bundle_path)?;
@@ -57,7 +53,15 @@ impl MacosAppBundler {
 
         if let Some(icon_source) = &platform_manifest.display_icon_source {
             let icon_file_name = shared::icon_file_name(icon_source)?;
-            let destination = resources_dir.join(icon_file_name);
+            let destination = contents_dir.join("Resources").join(icon_file_name);
+            let parent = destination.parent().ok_or_else(|| {
+                anyhow::anyhow!(
+                    "failed to resolve destination directory for {}",
+                    destination.display()
+                )
+            })?;
+            fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create {}", parent.display()))?;
             fs::copy(icon_source, &destination).with_context(|| {
                 format!(
                     "failed to copy display icon {} to {}",
@@ -104,10 +108,7 @@ fn bundle_destination(file: &PayloadFile, bundle_path: &Path) -> anyhow::Result<
     }
 
     let relative_destination = validated_relative_path(&file.destination)?;
-    Ok(bundle_path
-        .join(CONTENTS_DIR)
-        .join(RESOURCES_DIR)
-        .join(relative_destination))
+    Ok(bundle_path.join(CONTENTS_DIR).join(relative_destination))
 }
 
 fn executable_file_name(file: &PayloadFile) -> anyhow::Result<&OsStr> {
@@ -483,7 +484,7 @@ mod tests {
                 PayloadFile::executable(executable.display().to_string(), "bin/example".to_owned()),
                 PayloadFile::data(
                     data_file.display().to_string(),
-                    "etc/example/settings.toml".to_owned(),
+                    "Resources/etc/example/settings.toml".to_owned(),
                 ),
             ],
             shortcuts: Vec::new(),

@@ -10,8 +10,8 @@ targets = [
 ]
 install_path = "$INSTALLPATH"
 files = [
-    { source = "Cargo.toml", destination = "manifests/Cargo.toml" },
-    { source = "some_assets", destination = "some_assets" },
+    { source = "Cargo.toml", destination = "Resources/manifests/Cargo.toml" },
+    { source = "some_assets", destination = "Resources/some_assets" },
 ]
 associated_files = [
     { path = "$HOMEPATH/Documents/Example App/saves", kind = "directory" },
