@@ -1,5 +1,5 @@
 use crate::bundlers::{MacosInstallerKind, WindowsInstallerKind};
-use crate::platform_manifests::WindowsPlatformManifest;
+use crate::platform_manifests::{MacosPkgConfig, WindowsPlatformManifest};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::path::Path;
@@ -397,12 +397,40 @@ mod tests {
             r#"
             [macos]
             targets = ["aarch64-apple-darwin"]
-            bundle = ["app", "app"]
+            bundle = ["app", "pkg", "app"]
             "#,
         );
 
         let macos = manifest.macos.expect("macos platform should exist");
-        assert_eq!(macos.bundles(), vec![MacosInstallerKind::App]);
+        assert_eq!(
+            macos.bundles(),
+            vec![MacosInstallerKind::App, MacosInstallerKind::Pkg]
+        );
+    }
+
+    #[test]
+    fn macos_pkg_config_parses() {
+        let manifest = parse_manifest(
+            r#"
+            [macos]
+            targets = ["aarch64-apple-darwin"]
+            bundle = "pkg"
+
+            [macos.pkg]
+            identifier = "com.example.app"
+            install_location = "/Applications"
+            bin_dir = "/usr/local/bin"
+            link_bins = false
+            enable_user_home = true
+            "#,
+        );
+
+        let macos = manifest.macos.expect("macos platform should exist");
+        assert_eq!(macos.pkg.identifier.as_deref(), Some("com.example.app"));
+        assert_eq!(macos.pkg.install_location.as_deref(), Some("/Applications"));
+        assert_eq!(macos.pkg.bin_dir.as_deref(), Some("/usr/local/bin"));
+        assert!(!macos.pkg.link_bins);
+        assert!(macos.pkg.enable_user_home);
     }
 }
 
@@ -420,6 +448,8 @@ pub struct MacosPlatform {
     pub files: Vec<FileMapping>,
     pub display_icon: Option<String>,
     pub app_binary: Option<String>,
+    #[serde(default)]
+    pub pkg: MacosPkgConfig,
 }
 
 impl MacosPlatform {

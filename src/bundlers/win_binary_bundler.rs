@@ -385,6 +385,10 @@ impl WinBinaryBundler {
             target_dir.join(installer_bin),
             project_space.join(installer_bin),
         )?;
+        if cargo_target_dir.exists() {
+            fs::remove_dir_all(&cargo_target_dir)
+                .with_context(|| format!("failed to remove {}", cargo_target_dir.display()))?;
+        }
         fs::remove_dir_all(builder_space)?;
         Ok(())
     }

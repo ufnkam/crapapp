@@ -3,6 +3,8 @@ use std::fs;
 use std::path::{Component, Path, PathBuf};
 
 use anyhow::{Context, bail};
+use quick_xml::Writer;
+use quick_xml::events::{BytesDecl, BytesEnd, BytesStart, BytesText, Event};
 
 use crate::build_manifest::BuildManifest;
 use crate::bundlers::MacosInstallerKind;
@@ -28,15 +30,28 @@ impl MacosAppBundler {
             bail!("macOS app bundle has no files to package");
         }
 
-        let target_dir = build_dir
+        let bundle_path = build_dir
             .join(&platform_manifest.platform)
             .join(&target_manifest.target)
-            .join(bundle.to_string());
-        let bundle_name = bundle_name(build_manifest);
-        let bundle_path = target_dir.join(format!("{bundle_name}.app"));
+            .join(bundle.to_string())
+            .join(format!("{}.app", bundle_name(build_manifest)));
 
+        Self::bundle_to_path(
+            build_manifest,
+            platform_manifest,
+            target_manifest,
+            &bundle_path,
+        )
+    }
+
+    pub(crate) fn bundle_to_path(
+        build_manifest: &BuildManifest,
+        platform_manifest: &MacosPlatformManifest,
+        target_manifest: &TargetManifest,
+        bundle_path: &Path,
+    ) -> anyhow::Result<()> {
         if bundle_path.exists() {
-            fs::remove_dir_all(&bundle_path)
+            fs::remove_dir_all(bundle_path)
                 .with_context(|| format!("failed to remove {}", bundle_path.display()))?;
         }
 
@@ -47,7 +62,7 @@ impl MacosAppBundler {
             .with_context(|| format!("failed to create {}", macos_dir.display()))?;
 
         for file in &target_manifest.files {
-            let destination = bundle_destination(file, &bundle_path)?;
+            let destination = bundle_destination(file, bundle_path)?;
             copy_payload_file(file, &destination)?;
         }
 
@@ -75,7 +90,7 @@ impl MacosAppBundler {
             build_manifest,
             platform_manifest,
             target_manifest,
-            &bundle_path,
+            bundle_path,
         )?;
         let pkg_info_path = bundle_path.join(CONTENTS_DIR).join("PkgInfo");
 
@@ -86,7 +101,7 @@ impl MacosAppBundler {
     }
 }
 
-fn bundle_name(build_manifest: &BuildManifest) -> String {
+pub(crate) fn bundle_name(build_manifest: &BuildManifest) -> String {
     if let Some(display_name) = &build_manifest.build.display_name {
         let display_name = display_name.trim();
 
@@ -159,28 +174,9 @@ fn copy_payload_file(file: &PayloadFile, destination: &Path) -> anyhow::Result<(
     })?;
 
     if file.executable {
-        set_executable_permissions(destination)?;
+        shared::set_executable_permissions(destination)?;
     }
 
-    Ok(())
-}
-
-#[cfg(unix)]
-fn set_executable_permissions(path: &Path) -> anyhow::Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-
-    let mut permissions = fs::metadata(path)
-        .with_context(|| format!("failed to read permissions for {}", path.display()))?
-        .permissions();
-    permissions.set_mode(0o755);
-    fs::set_permissions(path, permissions)
-        .with_context(|| format!("failed to set executable permissions on {}", path.display()))?;
-
-    Ok(())
-}
-
-#[cfg(not(unix))]
-fn set_executable_permissions(_path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
@@ -207,63 +203,66 @@ fn info_plist(
     let executable = primary_executable_name(build_manifest, platform_manifest, target_manifest)?;
     let bundle_name = bundle_name(build_manifest);
     let identifier = bundle_identifier(build_manifest);
-    let icon_entry = info_plist_icon_entry(platform_manifest);
 
-    Ok(format!(
-        r#"<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>CFBundleDevelopmentRegion</key>
-    <string>en</string>
-    <key>CFBundleDisplayName</key>
-    <string>{display_name}</string>
-    <key>CFBundleExecutable</key>
-    <string>{executable}</string>
-    <key>CFBundleIdentifier</key>
-    <string>{identifier}</string>
-{icon_entry}    <key>CFBundleInfoDictionaryVersion</key>
-    <string>6.0</string>
-    <key>CFBundleName</key>
-    <string>{name}</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>CFBundleShortVersionString</key>
-    <string>{short_version}</string>
-    <key>CFBundleVersion</key>
-    <string>{version}</string>
-</dict>
-</plist>
-"#,
-        display_name = xml_text(&bundle_name),
-        executable = xml_text(executable),
-        identifier = xml_text(&identifier),
-        icon_entry = icon_entry,
-        name = xml_text(&bundle_name),
-        short_version = xml_text(&build_manifest.version),
-        version = xml_text(&build_manifest.version),
-    ))
+    let mut writer = Writer::new_with_indent(Vec::new(), b' ', 4);
+    writer.write_event(Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))?;
+    writer.write_event(Event::DocType(BytesText::new(
+        r#"plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd""#,
+    )))?;
+
+    let mut plist = BytesStart::new("plist");
+    plist.push_attribute(("version", "1.0"));
+    writer.write_event(Event::Start(plist))?;
+    writer.write_event(Event::Start(BytesStart::new("dict")))?;
+
+    write_plist_entry(&mut writer, "CFBundleDevelopmentRegion", "en")?;
+    write_plist_entry(&mut writer, "CFBundleDisplayName", &bundle_name)?;
+    write_plist_entry(&mut writer, "CFBundleExecutable", executable)?;
+    write_plist_entry(&mut writer, "CFBundleIdentifier", &identifier)?;
+
+    if let Some(icon_file) = info_plist_icon_file(platform_manifest) {
+        write_plist_entry(&mut writer, "CFBundleIconFile", icon_file)?;
+    }
+
+    write_plist_entry(&mut writer, "CFBundleInfoDictionaryVersion", "6.0")?;
+    write_plist_entry(&mut writer, "CFBundleName", &bundle_name)?;
+    write_plist_entry(&mut writer, "CFBundlePackageType", "APPL")?;
+    write_plist_entry(
+        &mut writer,
+        "CFBundleShortVersionString",
+        &build_manifest.version,
+    )?;
+    write_plist_entry(&mut writer, "CFBundleVersion", &build_manifest.version)?;
+
+    writer.write_event(Event::End(BytesEnd::new("dict")))?;
+    writer.write_event(Event::End(BytesEnd::new("plist")))?;
+
+    let mut plist = String::from_utf8(writer.into_inner()).context("Info.plist is not UTF-8")?;
+    plist.push('\n');
+
+    Ok(plist)
 }
 
-fn info_plist_icon_entry(platform_manifest: &MacosPlatformManifest) -> String {
-    let Some(display_icon) = &platform_manifest.display_icon else {
-        return String::new();
-    };
+fn write_plist_entry(writer: &mut Writer<Vec<u8>>, key: &str, value: &str) -> anyhow::Result<()> {
+    writer.write_event(Event::Start(BytesStart::new("key")))?;
+    writer.write_event(Event::Text(BytesText::new(key)))?;
+    writer.write_event(Event::End(BytesEnd::new("key")))?;
+    writer.write_event(Event::Start(BytesStart::new("string")))?;
+    writer.write_event(Event::Text(BytesText::new(value)))?;
+    writer.write_event(Event::End(BytesEnd::new("string")))?;
 
+    Ok(())
+}
+
+fn info_plist_icon_file(platform_manifest: &MacosPlatformManifest) -> Option<&str> {
+    let display_icon = platform_manifest.display_icon.as_deref()?;
     let icon_path = Path::new(display_icon);
 
     if !shared::path_has_extension(icon_path, &["icns"]) {
-        return String::new();
+        return None;
     }
 
-    let Some(file_name) = icon_path.file_name().and_then(OsStr::to_str) else {
-        return String::new();
-    };
-
-    format!(
-        "    <key>CFBundleIconFile</key>\n    <string>{}</string>\n",
-        xml_text(file_name)
-    )
+    icon_path.file_name().and_then(OsStr::to_str)
 }
 
 fn primary_executable_name<'a>(
@@ -310,7 +309,7 @@ fn primary_executable_name<'a>(
     first_executable.ok_or_else(|| anyhow::anyhow!("macOS app bundle has no executable payload"))
 }
 
-fn bundle_identifier(build_manifest: &BuildManifest) -> String {
+pub(crate) fn bundle_identifier(build_manifest: &BuildManifest) -> String {
     let app_component = identifier_component(&build_manifest.app_name);
 
     match build_manifest.build.publisher.as_deref() {
@@ -345,23 +344,6 @@ fn identifier_component(value: &str) -> String {
     } else {
         component
     }
-}
-
-fn xml_text(value: &str) -> String {
-    let mut escaped = String::new();
-
-    for character in value.chars() {
-        match character {
-            '&' => escaped.push_str("&amp;"),
-            '<' => escaped.push_str("&lt;"),
-            '>' => escaped.push_str("&gt;"),
-            '"' => escaped.push_str("&quot;"),
-            '\'' => escaped.push_str("&apos;"),
-            _ => escaped.push(character),
-        }
-    }
-
-    escaped
 }
 
 #[cfg(test)]
@@ -602,6 +584,7 @@ mod tests {
             display_icon_source,
             app_binary,
             vec![MacosInstallerKind::App],
+            Default::default(),
         )
     }
 }

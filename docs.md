@@ -59,7 +59,8 @@ Bundler output currently lands in:
 
 ```text
 .crapapp_build/windows/<target>/<bundle>/setup.exe
-.crapapp_build/macos/<target>/<bundle>/<display-name-or-package-name>.app
+.crapapp_build/macos/<target>/app/<display-name-or-package-name>.app
+.crapapp_build/macos/<target>/pkg/<display-name-or-package-name>.pkg
 ```
 
 Linux output and macOS DMG output are not supported yet.
@@ -98,12 +99,18 @@ shortcuts = [
 
 [macos]
 targets = ["aarch64-apple-darwin"]
-bundle = "app"
+bundle = ["app", "pkg"]
 display_icon = "assets/app.icns"
 app_binary = "acme-launcher"
 files = [
     { source = "assets", destination = "Resources/assets" },
 ]
+
+[macos.pkg]
+identifier = "com.acme.launcher"
+install_location = "/Applications"
+bin_dir = "/usr/local/bin"
+link_bins = true
 ```
 
 ## Build section
@@ -339,12 +346,13 @@ Fields:
 The `[macos]` section creates `.app` bundles. Each configured target produces:
 
 ```text
-.crapapp_build/macos/<target>/<bundle>/<display-name-or-package-name>.app
+.crapapp_build/macos/<target>/app/<display-name-or-package-name>.app
+.crapapp_build/macos/<target>/pkg/<display-name-or-package-name>.pkg
 ```
 
 `bundle` is optional and defaults to `app`. It accepts either a single value
-or a list, matching the Windows bundle field. The only supported macOS bundle
-kind today is `app`.
+or a list, matching the Windows bundle field. Supported macOS bundle kinds are
+`app` and `pkg`.
 
 Application executables are copied into `Contents/MacOS` for the `.app` bundle.
 Extra `files` entries are copied to their configured destination relative to
@@ -358,7 +366,10 @@ falls back to the first executable payload.
 The `.app` launcher should be a GUI binary. macOS does not open Terminal when a
 Finder-launched app runs a CLI executable, so stdout/stderr are not visible and
 stdin is not an interactive prompt. Package CLI tools inside `Contents/MacOS`
-only when they are meant to be run directly from a shell, for example:
+only when they are meant to be run directly from a shell. The pkg bundle writes
+terminal shims for executable payloads by default, so after installing the pkg
+you can normally run the binary by name. Without pkg terminal links, use the
+binary inside the app bundle directly:
 
 ```sh
 "/Applications/Example App.app/Contents/MacOS/example"
@@ -367,6 +378,27 @@ only when they are meant to be run directly from a shell, for example:
 `display_icon` is optional. The source file is copied into `Contents/Resources`.
 When the source is an `.icns` file, `Info.plist` also sets `CFBundleIconFile` so
 macOS can use it as the app icon.
+
+### macOS pkg
+
+The `[macos.pkg]` section configures `bundle = "pkg"`. The pkg bundle reuses the
+same `.app` layout and writes a flat Apple installer package without calling
+`pkgbuild`, `productbuild`, or other system packaging tools.
+
+Fields:
+
+- `identifier`, optional reverse-DNS package receipt id. If omitted,
+  cargo-crapapp derives one from `publisher` and the Cargo package name.
+- `install_location`, optional absolute install root. It defaults to
+  `/Applications`, so the app payload installs as
+  `/Applications/<display-name-or-package-name>.app`.
+- `bin_dir`, optional absolute directory for terminal shims. It defaults to
+  `/usr/local/bin`.
+- `link_bins`, optional boolean. It defaults to `true`. When enabled, each
+  executable payload gets an executable shell shim in `bin_dir` that forwards to
+  the matching binary in `<app>.app/Contents/MacOS`.
+- `enable_user_home`, optional boolean. If true, the package Distribution allows
+  current-user-home installs through Apple Installer.
 
 DMG output is not supported yet.
 

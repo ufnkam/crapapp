@@ -6,4 +6,5 @@ use strum_macros::Display;
 #[strum(serialize_all = "lowercase")]
 pub enum MacosInstallerKind {
     App,
+    Pkg,
 }

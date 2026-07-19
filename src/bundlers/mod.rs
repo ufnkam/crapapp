@@ -1,6 +1,7 @@
 mod macos_app_bundler;
 mod macos_bundler;
 mod macos_installer;
+mod macos_pkg_bundler;
 pub(crate) mod shared;
 mod win_binary_bundler;
 mod windows_bundler;

@@ -3,6 +3,7 @@ use std::path::Path;
 use crate::build_manifest::BuildManifest;
 use crate::bundlers::MacosInstallerKind;
 use crate::bundlers::macos_app_bundler::MacosAppBundler;
+use crate::bundlers::macos_pkg_bundler::MacosPkgBundler;
 use crate::platform_manifests::MacosPlatformManifest;
 
 pub struct MacosBundler<'a> {
@@ -30,6 +31,15 @@ impl<'a> MacosBundler<'a> {
                 match bundle {
                     MacosInstallerKind::App => {
                         MacosAppBundler::bundle(
+                            self.build_manifest,
+                            self.build_dir,
+                            self.platform,
+                            target,
+                            bundle,
+                        )?;
+                    }
+                    MacosInstallerKind::Pkg => {
+                        MacosPkgBundler::bundle(
                             self.build_manifest,
                             self.build_dir,
                             self.platform,

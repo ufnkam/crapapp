@@ -10,8 +10,8 @@ targets = [
 ]
 install_path = "$INSTALLPATH"
 files = [
-    { source = "Cargo.toml", destination = "Resources/manifests/Cargo.toml" },
-    { source = "some_assets", destination = "Resources/some_assets" },
+    { source = "Cargo.toml", destination = "manifests/Cargo.toml" },
+    { source = "some_assets", destination = "some_assets" },
 ]
 associated_files = [
     { path = "$HOMEPATH/Documents/Example App/saves", kind = "directory" },
@@ -40,10 +40,16 @@ bundle = [ "gui" ]
 targets = [
     "aarch64-apple-darwin",
 ]
-bundle = "app"
+bundle = ["app", "pkg"]
 display_icon = "build_assets/icon.icns"
 app_binary = "example"
 files = [
-    { source = "Cargo.toml", destination = "manifests/Cargo.toml" },
-    { source = "some_assets", destination = "some_assets" },
+    { source = "Cargo.toml", destination = "Resources/manifests/Cargo.toml" },
+    { source = "some_assets", destination = "Resources/some_assets" },
 ]
+
+[macos.pkg]
+identifier = "com.ufnkam.example"
+install_location = "/Applications"
+bin_dir = "/usr/local/bin"
+link_bins = true

@@ -1,5 +1,5 @@
 use crate::bundlers::MacosInstallerKind;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::platform_manifest::PlatformManifest;
 use crate::target_manifest::TargetManifest;
@@ -10,6 +10,7 @@ pub struct MacosPlatformManifest<Target = TargetManifest> {
     pub platform: String,
     pub targets: Vec<Target>,
     pub bundle: Vec<MacosInstallerKind>,
+    pub pkg: MacosPkgConfig,
     pub display_icon: Option<String>,
     pub app_binary: Option<String>,
     #[serde(skip, default)]
@@ -23,11 +24,13 @@ impl MacosPlatformManifest<TargetManifest> {
         display_icon_source: Option<&str>,
         app_binary: Option<&str>,
         bundle: Vec<MacosInstallerKind>,
+        pkg: MacosPkgConfig,
     ) -> Self {
         Self {
             platform: "macos".to_owned(),
             targets,
             bundle,
+            pkg,
             display_icon: display_icon.map(str::to_owned),
             app_binary: app_binary.map(str::to_owned),
             display_icon_source: display_icon_source.map(str::to_owned),
@@ -68,6 +71,18 @@ impl PlatformManifest for MacosPlatformManifest<TargetManifest> {
             output.push_str(&format!("    app binary: {app_binary}\n"));
         }
 
+        if let Some(identifier) = &self.pkg.identifier {
+            output.push_str(&format!("    pkg identifier: {identifier}\n"));
+        }
+
+        if let Some(install_location) = &self.pkg.install_location {
+            output.push_str(&format!("    pkg install location: {install_location}\n"));
+        }
+
+        if self.pkg.link_bins {
+            output.push_str(&format!("    pkg bin dir: {}\n", self.pkg.bin_dir()));
+        }
+
         for target in &self.targets {
             output.push_str(&format!("    {}\n", target.target));
 
@@ -80,4 +95,38 @@ impl PlatformManifest for MacosPlatformManifest<TargetManifest> {
             }
         }
     }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct MacosPkgConfig {
+    pub identifier: Option<String>,
+    pub install_location: Option<String>,
+    pub bin_dir: Option<String>,
+    #[serde(default = "default_link_bins")]
+    pub link_bins: bool,
+    #[serde(default)]
+    pub enable_user_home: bool,
+}
+
+impl Default for MacosPkgConfig {
+    fn default() -> Self {
+        Self {
+            identifier: None,
+            install_location: None,
+            bin_dir: None,
+            link_bins: true,
+            enable_user_home: false,
+        }
+    }
+}
+
+impl MacosPkgConfig {
+    pub fn bin_dir(&self) -> &str {
+        self.bin_dir.as_deref().unwrap_or("/usr/local/bin")
+    }
+}
+
+fn default_link_bins() -> bool {
+    true
 }

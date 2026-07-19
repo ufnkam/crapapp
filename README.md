@@ -22,9 +22,11 @@ It can:
 - create optional GUI installer screens with EULAs with acceptance reports etc 
 - create associated app files
 - create Start Menu search shortcuts 
-- and update the current user's `PATH`.
+- update the current user's `PATH`
+- create macOS `.app` bundles
+- create macOS `.pkg` installers with terminal shims.
 
-Linux and macOS output are not supported yet.
+Linux output and macOS DMG output are not supported yet.
 
 ## Should You Use It?
 
@@ -45,7 +47,8 @@ Bundler output currently lands in:
 
 ```text
 .crapapp_build/windows/<target>/<bundle>/setup.exe
-.crapapp_build/macos/<target>/<bundle>/<display-name-or-package-name>.app
+.crapapp_build/macos/<target>/app/<display-name-or-package-name>.app
+.crapapp_build/macos/<target>/pkg/<display-name-or-package-name>.pkg
 ```
 
 Full CLI, `CRAP.toml`, and `libcrapapp` documentation lives in [docs.md](docs.md)

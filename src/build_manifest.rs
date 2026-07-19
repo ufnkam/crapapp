@@ -19,7 +19,7 @@ pub struct BuildManifest {
     pub app_name: String,
     pub version: String,
     pub build: BuildConfigManifest,
-    pub platforms: Vec<Box<PlatformBuildManifest>>,
+    pub platforms: Vec<PlatformBuildManifest>,
 }
 
 impl BuildManifest {
@@ -54,6 +54,10 @@ impl BuildManifest {
                 PlatformConfig::Macos(macos) => macos.bundles(),
                 PlatformConfig::Windows(_) | PlatformConfig::Linux(_) => Vec::new(),
             };
+            let macos_pkg_config = match &platform {
+                PlatformConfig::Macos(macos) => macos.pkg.clone(),
+                PlatformConfig::Windows(_) | PlatformConfig::Linux(_) => Default::default(),
+            };
             let shortcuts = match &platform {
                 PlatformConfig::Windows(windows) => windows.shortcuts.as_slice(),
                 PlatformConfig::Macos(_) | PlatformConfig::Linux(_) => &[],
@@ -71,7 +75,7 @@ impl BuildManifest {
                 )?);
             }
 
-            platforms.push(Box::new(match &platform {
+            platforms.push(match &platform {
                 PlatformConfig::Windows(windows) => PlatformBuildManifest::Windows(windows.build(
                     &files,
                     targets,
@@ -86,12 +90,13 @@ impl BuildManifest {
                         display_icon_source,
                         macos_app_binary,
                         macos_bundles,
+                        macos_pkg_config,
                     ))
                 }
                 PlatformConfig::Linux(_) => PlatformBuildManifest::Linux(
                     BasicPlatformManifest::new(platform.name(), targets),
                 ),
-            }));
+            });
         }
 
         Ok(Self {
@@ -167,7 +172,6 @@ impl BuildManifest {
     pub fn get_platform_config(&self, platform: &str) -> Option<&PlatformBuildManifest> {
         self.platforms
             .iter()
-            .map(Box::as_ref)
             .find(|_platform| _platform.platform() == platform)
     }
 }

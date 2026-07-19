@@ -1,6 +1,7 @@
+use std::fs;
 use std::path::Path;
 
-use anyhow::bail;
+use anyhow::{Context, bail};
 
 pub fn icon_file_name(source: &str) -> anyhow::Result<&str> {
     let source_path = Path::new(source);
@@ -32,4 +33,23 @@ pub fn path_has_extension(path: &Path, allowed_extensions: &[&str]) -> bool {
     }
 
     false
+}
+
+#[cfg(unix)]
+pub fn set_executable_permissions(path: &Path) -> anyhow::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let mut permissions = fs::metadata(path)
+        .with_context(|| format!("failed to read permissions for {}", path.display()))?
+        .permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(path, permissions)
+        .with_context(|| format!("failed to set executable permissions on {}", path.display()))?;
+
+    Ok(())
+}
+
+#[cfg(not(unix))]
+pub fn set_executable_permissions(_path: &Path) -> anyhow::Result<()> {
+    Ok(())
 }
