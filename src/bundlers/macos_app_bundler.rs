@@ -585,6 +585,7 @@ mod tests {
             app_binary,
             vec![MacosInstallerKind::App],
             Default::default(),
+            Vec::new(),
         )
     }
 }

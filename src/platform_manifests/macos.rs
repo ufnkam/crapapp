@@ -1,6 +1,7 @@
 use crate::bundlers::MacosInstallerKind;
 use serde::{Deserialize, Serialize};
 
+use crate::manifest_file::EulaFile;
 use crate::platform_manifest::PlatformManifest;
 use crate::target_manifest::TargetManifest;
 
@@ -11,6 +12,7 @@ pub struct MacosPlatformManifest<Target = TargetManifest> {
     pub targets: Vec<Target>,
     pub bundle: Vec<MacosInstallerKind>,
     pub pkg: MacosPkgConfig,
+    pub eulas: Vec<EulaFile>,
     pub display_icon: Option<String>,
     pub app_binary: Option<String>,
     #[serde(skip, default)]
@@ -25,12 +27,14 @@ impl MacosPlatformManifest<TargetManifest> {
         app_binary: Option<&str>,
         bundle: Vec<MacosInstallerKind>,
         pkg: MacosPkgConfig,
+        eulas: Vec<EulaFile>,
     ) -> Self {
         Self {
             platform: "macos".to_owned(),
             targets,
             bundle,
             pkg,
+            eulas,
             display_icon: display_icon.map(str::to_owned),
             app_binary: app_binary.map(str::to_owned),
             display_icon_source: display_icon_source.map(str::to_owned),
@@ -75,12 +79,25 @@ impl PlatformManifest for MacosPlatformManifest<TargetManifest> {
             output.push_str(&format!("    pkg identifier: {identifier}\n"));
         }
 
-        if let Some(install_location) = &self.pkg.install_location {
-            output.push_str(&format!("    pkg install location: {install_location}\n"));
+        if let Some(install_path) = &self.pkg.install_path {
+            output.push_str(&format!("    pkg install path: {install_path}\n"));
         }
 
         if self.pkg.link_bins {
             output.push_str(&format!("    pkg bin dir: {}\n", self.pkg.bin_dir()));
+        }
+
+        if !self.eulas.is_empty() {
+            output.push_str("    eulas:\n");
+
+            for eula in &self.eulas {
+                let required = if eula.required() {
+                    "required"
+                } else {
+                    "optional"
+                };
+                output.push_str(&format!("      {} ({required})\n", eula.path()));
+            }
         }
 
         for target in &self.targets {
@@ -101,22 +118,19 @@ impl PlatformManifest for MacosPlatformManifest<TargetManifest> {
 #[serde(deny_unknown_fields)]
 pub struct MacosPkgConfig {
     pub identifier: Option<String>,
-    pub install_location: Option<String>,
+    pub install_path: Option<String>,
     pub bin_dir: Option<String>,
     #[serde(default = "default_link_bins")]
     pub link_bins: bool,
-    #[serde(default)]
-    pub enable_user_home: bool,
 }
 
 impl Default for MacosPkgConfig {
     fn default() -> Self {
         Self {
             identifier: None,
-            install_location: None,
+            install_path: None,
             bin_dir: None,
             link_bins: true,
-            enable_user_home: false,
         }
     }
 }

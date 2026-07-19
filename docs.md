@@ -102,13 +102,17 @@ targets = ["aarch64-apple-darwin"]
 bundle = ["app", "pkg"]
 display_icon = "assets/app.icns"
 app_binary = "acme-launcher"
+eulas = [
+    { path = "EULA.txt" },
+    { path = "THIRD_PARTY.txt", required = false },
+]
 files = [
     { source = "assets", destination = "Resources/assets" },
 ]
 
 [macos.pkg]
 identifier = "com.acme.launcher"
-install_location = "/Applications"
+install_path = "/Applications"
 bin_dir = "/usr/local/bin"
 link_bins = true
 ```
@@ -389,7 +393,7 @@ Fields:
 
 - `identifier`, optional reverse-DNS package receipt id. If omitted,
   cargo-crapapp derives one from `publisher` and the Cargo package name.
-- `install_location`, optional absolute install root. It defaults to
+- `install_path`, optional absolute install root. It defaults to
   `/Applications`, so the app payload installs as
   `/Applications/<display-name-or-package-name>.app`.
 - `bin_dir`, optional absolute directory for terminal shims. It defaults to
@@ -397,8 +401,12 @@ Fields:
 - `link_bins`, optional boolean. It defaults to `true`. When enabled, each
   executable payload gets an executable shell shim in `bin_dir` that forwards to
   the matching binary in `<app>.app/Contents/MacOS`.
-- `enable_user_home`, optional boolean. If true, the package Distribution allows
-  current-user-home installs through Apple Installer.
+
+`eulas` is optional on `[macos]` and uses the same manifest shape as Windows.
+For pkg output, cargo-crapapp merges the configured files into
+`Resources/License.txt` and points Apple Installer at that license resource.
+The `required` flag is preserved in the merged text for consistency, but Apple
+Installer treats the license screen as one agreement.
 
 DMG output is not supported yet.
 

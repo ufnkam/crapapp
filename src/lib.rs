@@ -9,6 +9,7 @@ mod cargo_package;
 /// Command-line entrypoint used by the `cargo-crapapp` binary.
 mod cli;
 mod icons;
+mod macos_pkg;
 mod manifest_file;
 mod payload_file;
 mod platform_manifest;

@@ -2,12 +2,13 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, bail};
-use embala_pkg::{FileSpec, PkgSpec};
 
 use crate::build_manifest::BuildManifest;
 use crate::bundlers::MacosInstallerKind;
 use crate::bundlers::macos_app_bundler::{MacosAppBundler, bundle_identifier, bundle_name};
 use crate::bundlers::shared;
+use crate::macos_pkg::{self, FileSpec, PkgSpec};
+use crate::manifest_file::EulaFile;
 use crate::payload_file::PayloadFile;
 use crate::platform_manifests::{MacosPkgConfig, MacosPlatformManifest};
 use crate::target_manifest::TargetManifest;
@@ -39,13 +40,13 @@ impl MacosPkgBundler {
 
         let stage_dir = target_dir.join("stage");
         let app_name = format!("{}.app", bundle_name(build_manifest));
-        let app_install_location = app_install_location(&platform_manifest.pkg)?;
+        let app_install_path = app_install_path(&platform_manifest.pkg)?;
         let install_from_root = platform_manifest.pkg.link_bins;
         let app_path = if install_from_root {
             stage_dir
                 .join(absolute_install_path(
-                    app_install_location,
-                    "macOS pkg install_location",
+                    app_install_path,
+                    "macOS pkg install_path",
                 )?)
                 .join(&app_name)
         } else {
@@ -63,16 +64,21 @@ impl MacosPkgBundler {
             write_bin_shims(
                 &stage_dir,
                 &platform_manifest.pkg,
-                app_install_location,
+                app_install_path,
                 &app_name,
                 target_manifest,
             )?;
         }
 
         let pkg_path = target_dir.join(format!("{}.pkg", artifact_file_stem(build_manifest)));
-        let spec = pkg_spec(build_manifest, &platform_manifest.pkg, &stage_dir)?;
+        let spec = pkg_spec(
+            build_manifest,
+            &platform_manifest.pkg,
+            &platform_manifest.eulas,
+            &stage_dir,
+        )?;
 
-        embala_pkg::build(&spec, &pkg_path)
+        macos_pkg::build(&spec, &pkg_path)
             .with_context(|| format!("failed to write {}", pkg_path.display()))?;
         fs::remove_dir_all(&stage_dir)
             .with_context(|| format!("failed to remove {}", stage_dir.display()))?;
@@ -84,12 +90,13 @@ impl MacosPkgBundler {
 fn pkg_spec(
     build_manifest: &BuildManifest,
     config: &MacosPkgConfig,
+    eulas: &[EulaFile],
     stage_dir: &Path,
 ) -> anyhow::Result<PkgSpec> {
-    let install_location = if config.link_bins {
+    let install_path = if config.link_bins {
         ROOT_DIR
     } else {
-        app_install_location(config)?
+        app_install_path(config)?
     };
 
     Ok(PkgSpec {
@@ -100,10 +107,39 @@ fn pkg_spec(
             .clone()
             .unwrap_or_else(|| bundle_identifier(build_manifest)),
         version: build_manifest.version.clone(),
-        install_location: install_location.to_owned(),
-        enable_user_home: config.enable_user_home,
+        install_path: install_path.to_owned(),
+        license: pkg_license(eulas)?,
         files: package_files(stage_dir)?,
     })
+}
+
+fn pkg_license(eulas: &[EulaFile]) -> anyhow::Result<Option<Vec<u8>>> {
+    if eulas.is_empty() {
+        return Ok(None);
+    }
+
+    let mut license = String::new();
+    for (index, eula) in eulas.iter().enumerate() {
+        let path = Path::new(eula.path());
+        let text = fs::read_to_string(path)
+            .with_context(|| format!("failed to read macOS pkg EULA file {}", path.display()))?;
+
+        if index > 0 {
+            license.push_str("\n\n");
+        }
+        license.push_str("==== ");
+        license.push_str(eula.path());
+        if !eula.required() {
+            license.push_str(" (optional on platforms with custom EULA UI)");
+        }
+        license.push_str(" ====\n\n");
+        license.push_str(&text);
+        if !license.ends_with('\n') {
+            license.push('\n');
+        }
+    }
+
+    Ok(Some(license.into_bytes()))
 }
 
 fn package_files(stage_dir: &Path) -> anyhow::Result<Vec<FileSpec>> {
@@ -121,7 +157,7 @@ fn package_files(stage_dir: &Path) -> anyhow::Result<Vec<FileSpec>> {
 fn write_bin_shims(
     stage_dir: &Path,
     config: &MacosPkgConfig,
-    app_install_location: &str,
+    app_install_path: &str,
     app_name: &str,
     target_manifest: &TargetManifest,
 ) -> anyhow::Result<()> {
@@ -136,7 +172,7 @@ fn write_bin_shims(
         }
 
         let shim_path = bin_path.join(&name);
-        let app_binary = format!("{app_install_location}/{app_name}/Contents/MacOS/{name}");
+        let app_binary = format!("{app_install_path}/{app_name}/Contents/MacOS/{name}");
         write_executable_shim(&shim_path, &app_binary)?;
         names.push(name);
     }
@@ -190,17 +226,14 @@ fn executable_name(file: &PayloadFile) -> anyhow::Result<String> {
         })
 }
 
-fn app_install_location(config: &MacosPkgConfig) -> anyhow::Result<&str> {
-    let install_location = config
-        .install_location
-        .as_deref()
-        .unwrap_or(APPLICATIONS_DIR);
+fn app_install_path(config: &MacosPkgConfig) -> anyhow::Result<&str> {
+    let install_path = config.install_path.as_deref().unwrap_or(APPLICATIONS_DIR);
 
-    if !install_location.starts_with('/') {
-        bail!("macOS pkg install_location {install_location} must be absolute");
+    if !install_path.starts_with('/') {
+        bail!("macOS pkg install_path {install_path} must be absolute");
     }
 
-    Ok(install_location)
+    Ok(install_path)
 }
 
 fn absolute_install_path(path: &str, field: &str) -> anyhow::Result<PathBuf> {
@@ -291,6 +324,7 @@ mod tests {
     use crate::build_config_manifest::BuildConfigManifest;
     use crate::build_manifest::BuildManifest;
     use crate::bundlers::MacosInstallerKind;
+    use crate::manifest_file::EulaFile;
     use crate::payload_file::PayloadFile;
     use crate::platform_manifests::{MacosPkgConfig, MacosPlatformManifest};
     use crate::target_manifest::TargetManifest;
@@ -354,10 +388,9 @@ mod tests {
         };
         let config = MacosPkgConfig {
             identifier: None,
-            install_location: Some("/Applications".to_owned()),
+            install_path: Some("/Applications".to_owned()),
             bin_dir: Some("/usr/local/bin".to_owned()),
             link_bins: true,
-            enable_user_home: false,
         };
 
         write_bin_shims(
@@ -391,10 +424,12 @@ mod tests {
             std::env::temp_dir().join(format!("cargo-crapapp-pkg-bundle-{}", std::process::id()));
         let source_dir = temp_dir.join("source");
         let executable = source_dir.join("example");
+        let eula = source_dir.join("EULA.txt");
 
         let _ = fs::remove_dir_all(&temp_dir);
         fs::create_dir_all(&source_dir).expect("source dir should be created");
         fs::write(&executable, b"bin").expect("executable should be written");
+        fs::write(&eula, b"pkg terms").expect("EULA should be written");
 
         let build_manifest = BuildManifest {
             app_name: "example".to_owned(),
@@ -415,11 +450,11 @@ mod tests {
             vec![MacosInstallerKind::Pkg],
             MacosPkgConfig {
                 identifier: Some("com.ufnkam.example".to_owned()),
-                install_location: Some("/Applications".to_owned()),
+                install_path: Some("/Applications".to_owned()),
                 bin_dir: Some("/usr/local/bin".to_owned()),
                 link_bins: true,
-                enable_user_home: false,
             },
+            vec![EulaFile::Path(eula.display().to_string())],
         );
         let target_manifest = TargetManifest {
             target: "aarch64-apple-darwin".to_owned(),
@@ -449,6 +484,11 @@ mod tests {
 
         assert!(pkg_path.is_file());
         assert_eq!(&pkg_bytes[..4], b"xar!");
+        assert!(
+            pkg_bytes
+                .windows("License.txt".len())
+                .any(|window| { window == b"License.txt" })
+        );
         assert!(
             !pkg_path
                 .parent()

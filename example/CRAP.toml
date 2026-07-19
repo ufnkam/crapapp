@@ -43,6 +43,10 @@ targets = [
 bundle = ["app", "pkg"]
 display_icon = "build_assets/icon.icns"
 app_binary = "example"
+eulas = [
+    { path = "EULA.txt" },
+    { path = "EULA2.txt", required = false },
+]
 files = [
     { source = "Cargo.toml", destination = "Resources/manifests/Cargo.toml" },
     { source = "some_assets", destination = "Resources/some_assets" },
@@ -50,6 +54,6 @@ files = [
 
 [macos.pkg]
 identifier = "com.ufnkam.example"
-install_location = "/Applications"
+install_path = "/Applications"
 bin_dir = "/usr/local/bin"
 link_bins = true

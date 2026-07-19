@@ -415,22 +415,27 @@ mod tests {
             [macos]
             targets = ["aarch64-apple-darwin"]
             bundle = "pkg"
+            eulas = [
+                "EULA.txt",
+                { path = "EULA2.txt", required = false },
+            ]
 
             [macos.pkg]
             identifier = "com.example.app"
-            install_location = "/Applications"
+            install_path = "/Applications"
             bin_dir = "/usr/local/bin"
             link_bins = false
-            enable_user_home = true
             "#,
         );
 
         let macos = manifest.macos.expect("macos platform should exist");
         assert_eq!(macos.pkg.identifier.as_deref(), Some("com.example.app"));
-        assert_eq!(macos.pkg.install_location.as_deref(), Some("/Applications"));
+        assert_eq!(macos.pkg.install_path.as_deref(), Some("/Applications"));
         assert_eq!(macos.pkg.bin_dir.as_deref(), Some("/usr/local/bin"));
         assert!(!macos.pkg.link_bins);
-        assert!(macos.pkg.enable_user_home);
+        assert_eq!(macos.eulas.len(), 2);
+        assert!(macos.eulas[0].required());
+        assert!(!macos.eulas[1].required());
     }
 }
 
@@ -448,6 +453,8 @@ pub struct MacosPlatform {
     pub files: Vec<FileMapping>,
     pub display_icon: Option<String>,
     pub app_binary: Option<String>,
+    #[serde(default)]
+    pub eulas: Vec<EulaFile>,
     #[serde(default)]
     pub pkg: MacosPkgConfig,
 }

@@ -58,6 +58,10 @@ impl BuildManifest {
                 PlatformConfig::Macos(macos) => macos.pkg.clone(),
                 PlatformConfig::Windows(_) | PlatformConfig::Linux(_) => Default::default(),
             };
+            let macos_eulas = match &platform {
+                PlatformConfig::Macos(macos) => macos.eulas.clone(),
+                PlatformConfig::Windows(_) | PlatformConfig::Linux(_) => Vec::new(),
+            };
             let shortcuts = match &platform {
                 PlatformConfig::Windows(windows) => windows.shortcuts.as_slice(),
                 PlatformConfig::Macos(_) | PlatformConfig::Linux(_) => &[],
@@ -91,6 +95,7 @@ impl BuildManifest {
                         macos_app_binary,
                         macos_bundles,
                         macos_pkg_config,
+                        macos_eulas,
                     ))
                 }
                 PlatformConfig::Linux(_) => PlatformBuildManifest::Linux(
