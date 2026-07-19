@@ -28,26 +28,29 @@ eulas = [
 ]
 display_icon = "build_assets/icon.ico"
 bundle = [ "gui" ]
+# bundle = [ "gui", "msi" ] # msi is parsed, package writer is not implemented yet
 
-# [linux]
-# targets = ["x86_64-unknown-linux-gnu"]
-# bundle = "deb"
-# bin_dir = "/usr/bin"
-# files = [
-#     { source = "Cargo.toml", destination = "/usr/share/doc/example/Cargo.toml" },
-# ]
-# associated_files = [
-#     { path = "/var/lib/example", kind = "directory" },
-# ]
-# eulas = [
-#     { path = "EULA.txt" },
-#     { path = "EULA2.txt", required = false },
-# ]
+[linux]
+targets = ["x86_64-unknown-linux-gnu"]
+bundle = "deb"
+# bundle = ["deb", "rpm", "aur"] # rpm and aur are parsed, package writers are not implemented yet
+bin_dir = "/usr/bin"
+files = [
+    { source = "Cargo.toml", destination = "/usr/share/doc/example/Cargo.toml" },
+]
+associated_files = [
+    { path = "/var/lib/example", kind = "directory" },
+]
+eulas = [
+    { path = "EULA.txt" },
+    { path = "EULA2.txt", required = false },
+]
 [macos]
 targets = [
     "aarch64-apple-darwin",
 ]
 bundle = ["app", "pkg"]
+# bundle = ["app", "pkg", "dmg"] # dmg is parsed, package writer is not implemented yet
 display_icon = "build_assets/icon.icns"
 app_binary = "example"
 eulas = [
