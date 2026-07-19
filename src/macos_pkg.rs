@@ -200,7 +200,7 @@ fn write_cpio_entry(
     mtime: u64,
     data: &[u8],
 ) -> anyhow::Result<()> {
-    if name.as_bytes().len() + 1 > 0o777777 {
+    if name.len() + 1 > 0o777777 {
         bail!("cpio path {name} is too long");
     }
     if data.len() > 0o77777777777 {
@@ -216,7 +216,7 @@ fn write_cpio_entry(
     write_octal(output, links as u64, 6)?;
     write_octal(output, 0, 6)?;
     write_octal(output, mtime, 11)?;
-    write_octal(output, (name.as_bytes().len() + 1) as u64, 6)?;
+    write_octal(output, (name.len() + 1) as u64, 6)?;
     write_octal(output, data.len() as u64, 11)?;
     output.extend_from_slice(name.as_bytes());
     output.push(0);

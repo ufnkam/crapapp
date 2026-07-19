@@ -135,314 +135,209 @@ eulas = [
 ]
 ```
 
-## Build section
+## CRAP.toml reference
 
-The optional `[build]` section controls Cargo package selection and feature
-selection.
+`CRAP.toml` is strict: unknown fields are rejected. The supported top-level
+sections are `[build]`, `[windows]`, `[macos]`, `[macos.pkg]`, and `[linux]`.
 
-```toml
-[build]
-publisher = "Acme"
-display_name = "Acme Launcher"
-packages = ["acme-launcher"]
-features = ["sqlite", "native-tls"]
-```
+### `[build]`
 
-`packages` maps to Cargo package selection. If it is empty or missing,
-cargo-crapapp does not pass package flags to Cargo.
+`[build]` is optional. It controls Cargo package selection, feature selection,
+and display metadata reused by platform bundlers.
 
-`features` maps to Cargo feature selection. If it is empty or missing,
-cargo-crapapp does not pass feature flags to Cargo.
+Fields:
 
-`publisher` is optional. Windows setup writes the uninstall registry
-`Publisher` value only when this key is present.
+- `publisher`: optional string. Used as the Windows uninstall registry
+  `Publisher`, as part of the generated macOS package identifier, and as package
+  maintainer metadata for deb output. If omitted, platform outputs use their own
+  fallback.
+- `display_name`: optional string. User-facing app name. If omitted, the Cargo
+  package name is used. macOS app/pkg names and installer UI labels use this
+  value when present.
+- `packages`: optional array of strings. Each entry is passed to Cargo as a
+  selected package. If missing or empty, cargo-crapapp does not pass package
+  selection flags.
+- `features`: optional array of strings. Entries are passed to Cargo as enabled
+  features. If missing or empty, cargo-crapapp does not pass feature flags.
 
-`display_name` is optional. Windows setup uses it for installer text and the
-uninstall registry `DisplayName`. If it is missing, the Cargo package name is
-used.
+### Common field types
 
-## Windows section
-
-Windows is the only platform with generated installable output right now.
-
-```toml
-[windows]
-targets = ["x86_64-pc-windows-gnu"]
-install_path = "$INSTALLPATH"
-bundle = "gui"
-display_icon = "assets/app.ico"
-files = [
-    { source = "assets", destination = "assets" },
-]
-```
-
-Supported Windows targets:
-
-- `x86_64-pc-windows-gnu`
-- `x86_64-pc-windows-msvc`
-- `aarch64-pc-windows-gnullvm`
-- `aarch64-pc-windows-msvc`
-
-MSVC targets require a working MSVC-compatible Windows toolchain: linker,
-Windows SDK libraries, and the usual Cargo target configuration. Windows has
-that path by default through Visual Studio Build Tools. Linux/macOS can build
-MSVC targets only when that toolchain is configured explicitly, for example with
-an LLVM/lld-based setup and Windows SDK import libraries. cargo-crapapp does not
-set up that cross toolchain for you.
-
-### Windows bundle
-
-`bundle` is optional and defaults to `cli`. It accepts either a single value
-or a list.
+`files` entries copy extra payload data in addition to Cargo binaries:
 
 ```toml
-[windows]
-bundle = "gui"
-```
-
-Supported values:
-
-- `cli`, generates a command-line setup executable.
-- `gui`, generates a graphical setup executable.
-- `msi`, recognized in the manifest; the package writer is not implemented yet.
-
-You can build more than one bundle for the same target:
-
-```toml
-[windows]
-bundle = ["cli", "gui", "msi"]
-```
-
-Outputs are grouped by bundle name:
-
-```text
-.crapapp_build/windows/<target>/cli/setup.exe
-.crapapp_build/windows/<target>/gui/setup.exe
-.crapapp_build/windows/<target>/msi/setup.msi
-```
-
-### Windows install path
-
-`install_path` is optional. If present, relative payload destinations are
-prefixed with it in the build manifest.
-
-```toml
-[windows]
-install_path = "$INSTALLPATH"
-```
-
-Variables such as `$INSTALLPATH` stay symbolic in the build manifest and are
-resolved by the generated installer at runtime.
-
-Generated Windows setup accepts runtime variables with repeated `--args`
-arguments:
-
-```sh
-setup.exe --args INSTALLPATH=C:\Users\me\AppData\Local\Acme
-setup.exe --args INSTALLPATH=C:\Users\me\AppData\Local\Acme --args ADD_TO_PATH=0
-```
-
-`ADD_TO_PATH` defaults to `1`, so executable payload directories are added to the
-current user's `PATH` unless explicitly disabled.
-
-### Windows binary directory
-
-`bin_dir` is optional. If omitted, Cargo binaries are installed directly into
-`install_path` when `install_path` is present.
-
-```toml
-[windows]
-install_path = "$INSTALLPATH"
-bin_dir = "bin"
-```
-
-### Windows payload files
-
-`files` is optional. Each entry copies an extra file or directory into the
-payload.
-
-```toml
-[windows]
 files = [
     { source = "assets", destination = "assets" },
     { source = "config/default.json", destination = "config/default.json" },
 ]
 ```
 
-Cargo binaries are added automatically from the selected Cargo package metadata.
+Fields:
 
-### Windows display icon
+- `source`: required path string. It must exist when cargo-crapapp reads the
+  manifest. A file is copied as one payload file. A directory is walked
+  recursively and copied in deterministic path order.
+- `destination`: required path string. Meaning depends on platform. Windows and
+  Linux use package/install paths directly. macOS app/pkg paths are relative to
+  `.app/Contents` unless the destination starts with `Contents/`.
 
-`display_icon` is optional. It names a PNG or ICO file.
-
-```toml
-[windows]
-display_icon = "assets/app.ico"
-```
-
-The GUI installer uses this icon in its header. Windows uninstall registry
-`DisplayIcon` points to the installed app executable. The generated `setup.exe`
-itself always uses the cargo-crapapp crab icon.
-
-cargo-crapapp does not modify built application binaries. If the application
-executable should have this icon in Explorer or Windows Search, the application
-crate must embed it itself, for example from its own `build.rs`.
-
-### Windows EULAs
-
-`eulas` is optional. Each entry can be a path string or an object.
+`eulas` entries describe license files:
 
 ```toml
-[windows]
 eulas = [
     "EULA.txt",
     { path = "THIRD_PARTY.txt", required = false },
 ]
 ```
 
-`required` defaults to `true`. GUI installation and reinstallation show each
-EULA on its own screen before settings.
+An entry can be a plain path string or an object.
 
-### Windows associated files
+- `path`: required for object form. Source text file path.
+- `required`: optional boolean, default `true`. Windows GUI setup uses it to
+  decide whether the acceptance checkbox gates the Next button. macOS pkg and
+  Linux deb preserve the information only as text/package content because those
+  formats do not expose the same custom optional-EULA wizard.
 
-`associated_files` is optional. It creates app-owned files or directories during
-installation.
+`associated_files` entries create app-owned empty files or directories:
 
 ```toml
-[windows]
 associated_files = [
     { path = "$HOMEPATH/Documents/Acme/saves", kind = "directory" },
-    { path = "$INSTALLPATH/settings.json", kind = "file" },
-]
-```
-
-Supported `kind` values:
-
-- `directory`
-- `file`
-
-Associated file paths support:
-
-- `$INSTALLPATH`, resolved from the install path selected at runtime.
-- `$HOMEPATH`, resolved to the current user's home directory at installer
-  runtime.
-
-Associated files are not payload files. They are empty files or directories that
-the installed app can use later. The uninstaller can remove them when the user
-chooses to remove associated files.
-
-Set `eula_report = true` on an associated file or directory to write a JSON EULA
-acceptance report after installation.
-
-```toml
-[windows]
-associated_files = [
-    { path = "$HOMEPATH/Documents/Acme/eulas", kind = "directory", eula_report = true },
-]
-```
-
-For a directory, the installer writes `eulas.json` inside it. For a file, the
-installer writes the report to that file path.
-
-### Windows shortcuts
-
-`shortcuts` is optional. It creates Start Menu `.lnk` files so Windows Search
-can find the app by display name. It does not pin anything.
-
-```toml
-[windows]
-shortcuts = [
-    { binary = "acme-launcher", name = "Acme Launcher", directory = "Acme", icon = "build_assets/acme.ico" },
+    { path = "$INSTALLPATH/settings.json", kind = "file", eula_report = true },
 ]
 ```
 
 Fields:
 
-- `binary`, the Cargo binary name without `.exe`.
-- `name`, the Start Menu shortcut display name.
-- `directory`, optional Start Menu directory.
-- `icon`, optional icon file source. The installer copies it next to the app
-  binaries and points the shortcut at the installed icon file. If omitted, the
-  shortcut uses the target executable icon.
+- `path`: required path string.
+- `kind`: required, either `file` or `directory`.
+- `eula_report`: optional boolean, default `false`. Windows writes a JSON EULA
+  acceptance report to this file path, or to `eulas.json` inside this directory.
+  Linux deb currently creates the associated file/directory but does not write a
+  runtime report. macOS pkg does not use `associated_files`.
 
-## macOS
+### `[windows]`
 
-The `[macos]` section creates `.app` bundles. Each configured target produces:
+`[windows]` configures Windows setup output.
 
-```text
-.crapapp_build/macos/<target>/app/<display-name-or-package-name>.app
-.crapapp_build/macos/<target>/pkg/<display-name-or-package-name>.pkg
-```
+Fields:
 
-`bundle` is optional and defaults to `app`. It accepts either a single value
-or a list, matching the Windows bundle field. Supported macOS bundle kinds are
-`app`, `pkg`, and `dmg`. The `dmg` package writer is not implemented yet.
+- `targets`: optional array of target triples. Supported values are
+  `x86_64-pc-windows-gnu`, `x86_64-pc-windows-msvc`,
+  `aarch64-pc-windows-gnullvm`, and `aarch64-pc-windows-msvc`.
+- `bundle`: optional string or array. Defaults to `cli`. Values are `cli`,
+  `gui`, and `msi`. `cli` and `gui` generate `setup.exe`; `msi` is parsed but
+  not implemented yet.
+- `install_path`: optional string. If present, relative binary and payload
+  destinations are prefixed with it in the build manifest. `$INSTALLPATH` is
+  resolved by the generated installer at runtime.
+- `bin_dir`: optional string. If omitted, Cargo binaries are installed directly
+  under `install_path` when `install_path` is present. If present, Cargo
+  binaries are installed under that directory relative to `install_path`, unless
+  the path is already absolute/symbolic in the manifest.
+- `files`: optional array of payload file mappings.
+- `associated_files`: optional array of associated file mappings.
+- `eulas`: optional array of EULA files.
+- `shortcuts`: optional array. Creates Start Menu `.lnk` files. Windows Search
+  can find those shortcuts, but cargo-crapapp does not pin them.
+- `display_icon`: optional PNG or ICO path. The GUI installer uses it in its
+  header. The uninstall registry `DisplayIcon` points at the installed app
+  executable. cargo-crapapp does not modify your built application executable
+  icon.
 
-Application executables are copied into `Contents/MacOS` for the `.app` bundle.
-Extra `files` entries are copied to their configured destination relative to
-`Contents`, so `destination = "Resources/assets"` writes to
-`Example App.app/Contents/Resources/assets`.
+`shortcuts` fields:
 
-`app_binary` is optional. When set, it names the Cargo binary used as the
-`.app` launcher through `CFBundleExecutable`. If omitted or empty, cargo-crapapp
-falls back to the first executable payload.
+- `binary`: required Cargo binary name without `.exe`.
+- `name`: required Start Menu shortcut display name.
+- `directory`: optional Start Menu directory.
+- `icon`: optional icon source path. The installer copies it into the payload
+  and points the shortcut at the installed icon. If omitted, the shortcut uses
+  the target executable icon.
 
-The `.app` launcher should be a GUI binary. macOS does not open Terminal when a
-Finder-launched app runs a CLI executable, so stdout/stderr are not visible and
-stdin is not an interactive prompt. Package CLI tools inside `Contents/MacOS`
-only when they are meant to be run directly from a shell. The pkg bundle writes
-terminal shims for executable payloads by default, so after installing the pkg
-you can normally run the binary by name. Without pkg terminal links, use the
-binary inside the app bundle directly:
+Windows runtime variables:
+
+- `ADD_TO_PATH` defaults to `1`; executable payload directories are added to the
+  current user's `PATH` unless disabled.
+- `INSTALLPATH` is provided by the GUI installer or by CLI `--args`.
+- `HOMEPATH` is resolved to the current user's home directory by the installer.
+
+CLI setup variables are passed as repeated `--args` values:
 
 ```sh
-"/Applications/Example App.app/Contents/MacOS/example"
+setup.exe --args INSTALLPATH=C:\Users\me\AppData\Local\Acme
+setup.exe --args INSTALLPATH=C:\Users\me\AppData\Local\Acme --args ADD_TO_PATH=0
 ```
 
-`display_icon` is optional. The source file is copied into `Contents/Resources`.
-When the source is an `.icns` file, `Info.plist` also sets `CFBundleIconFile` so
-macOS can use it as the app icon.
+### `[macos]`
 
-### macOS pkg
-
-The `[macos.pkg]` section configures `bundle = "pkg"`. The pkg bundle reuses the
-same `.app` layout and writes a flat Apple installer package without calling
-`pkgbuild`, `productbuild`, or other system packaging tools.
+`[macos]` configures `.app`, `.pkg`, and eventually `.dmg` output.
 
 Fields:
 
-- `identifier`, optional reverse-DNS package receipt id. If omitted,
+- `targets`: optional array of target triples. Supported values are
+  `x86_64-apple-darwin` and `aarch64-apple-darwin`.
+- `bundle`: optional string or array. Defaults to `app`. Values are `app`,
+  `pkg`, and `dmg`. `app` and `pkg` are implemented; `dmg` is parsed but not
+  implemented yet.
+- `display_icon`: optional icon path. The source is copied into
+  `Contents/Resources`. When the source is `.icns`, `Info.plist` also sets
+  `CFBundleIconFile`.
+- `app_binary`: optional Cargo binary name. It becomes `CFBundleExecutable`.
+  If omitted or empty, cargo-crapapp falls back to the first executable payload.
+- `files`: optional array of payload file mappings. Destinations are relative to
+  `.app/Contents` unless they start with `Contents/`.
+- `eulas`: optional array of EULA files. For pkg output, files are merged into
+  top-level `Resources/License.txt`, and the Distribution points Apple Installer
+  at that license resource.
+- `pkg`: optional table configured through `[macos.pkg]`.
+
+Finder-launched `.app` bundles should point `app_binary` at a GUI binary. macOS
+does not open Terminal for a CLI executable launched from Finder, so stdout,
+stderr, and stdin are not visible as an interactive terminal session.
+
+### `[macos.pkg]`
+
+`[macos.pkg]` configures `bundle = "pkg"`.
+
+Fields:
+
+- `identifier`: optional reverse-DNS package receipt id. If omitted,
   cargo-crapapp derives one from `publisher` and the Cargo package name.
-- `install_path`, optional absolute install root. It defaults to
-  `/Applications`, so the app payload installs as
-  `/Applications/<display-name-or-package-name>.app`.
-- `bin_dir`, optional absolute directory for terminal shims. It defaults to
-  `/usr/local/bin`.
-- `link_bins`, optional boolean. It defaults to `true`. When enabled, each
-  executable payload gets an executable shell shim in `bin_dir` that forwards to
-  the matching binary in `<app>.app/Contents/MacOS`.
+- `install_path`: optional absolute path, default `/Applications`. The app
+  installs as `<install_path>/<display-name-or-package-name>.app`.
+- `bin_dir`: optional absolute path, default `/usr/local/bin`. Used only when
+  `link_bins = true`.
+- `link_bins`: optional boolean, default `true`. When enabled, each executable
+  payload gets a shell shim in `bin_dir` that forwards to the matching binary in
+  `<app>.app/Contents/MacOS`.
 
-`eulas` is optional on `[macos]` and uses the same manifest shape as Windows.
-For pkg output, cargo-crapapp merges the configured files into
-`Resources/License.txt` and points Apple Installer at that license resource.
-The `required` flag is preserved in the merged text for consistency, but Apple
-Installer treats the license screen as one agreement.
+The pkg writer is implemented in Rust and does not call `pkgbuild`,
+`productbuild`, or other system packaging tools.
 
-DMG output is recognized in the manifest but its package writer is not
-implemented yet.
+### `[linux]`
 
-## Linux
+`[linux]` configures Linux package output.
 
-The `[linux]` section supports the same core fields as the other platforms:
-`bundle`, `install_path`, `bin_dir`, `files`, `associated_files`, `eulas`, and
-`display_icon`. Supported Linux bundle values are `deb`, `rpm`, and `aur`.
+Fields:
 
-`deb` output writes a Debian binary package directly, without calling
-`dpkg-deb`. The package includes configured payload files, associated
-files/directories, and EULA files under `/usr/share/doc/<package>/licenses`.
+- `targets`: optional array of target triples. Supported values are
+  `x86_64-unknown-linux-gnu` and `x86_64-unknown-linux-musl`.
+- `bundle`: optional string or array. Defaults to `deb`. Values are `deb`,
+  `rpm`, and `aur`. `deb` is implemented; `rpm` and `aur` are parsed but not
+  implemented yet.
+- `install_path`: optional string. If present, relative binary and payload
+  destinations are prefixed with it in the build manifest.
+- `bin_dir`: optional string, default `/usr/bin`. Cargo binaries are installed
+  there, or under `install_path/bin_dir` when `install_path` is present and the
+  destination is not already prefixed.
+- `files`: optional array of payload file mappings.
+- `associated_files`: optional array of associated file mappings. deb output
+  creates these as empty files or directories in the package payload.
+- `eulas`: optional array of EULA files. deb output installs them under
+  `/usr/share/doc/<package>/licenses`.
+- `display_icon`: optional path. Parsed and shown by `inspect`; Linux package
+  writers do not install desktop integration from it yet.
 
-`rpm` and `aur` are recognized in the manifest but their package writers are not
-implemented yet.
+The deb writer is implemented in Rust and does not call `dpkg-deb`.
 
 # libcrapapp
 

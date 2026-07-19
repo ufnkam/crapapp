@@ -164,7 +164,7 @@ fn write_ar_entry(output: &mut Vec<u8>, name: &str, bytes: &[u8]) -> anyhow::Res
     );
     output.extend_from_slice(header.as_bytes());
     output.extend_from_slice(bytes);
-    if bytes.len() % 2 != 0 {
+    if !bytes.len().is_multiple_of(2) {
         output.push(b'\n');
     }
 
@@ -195,7 +195,7 @@ fn write_tar_header(
     typeflag: u8,
 ) -> anyhow::Result<()> {
     let name = path.strip_prefix("./").unwrap_or(path);
-    if name.as_bytes().len() > 100 {
+    if name.len() > 100 {
         bail!("tar path {path} is too long");
     }
 
@@ -248,7 +248,7 @@ fn write_tar_checksum(field: &mut [u8], value: u64) -> anyhow::Result<()> {
 }
 
 fn pad_tar(output: &mut Vec<u8>) {
-    while output.len() % 512 != 0 {
+    while !output.len().is_multiple_of(512) {
         output.push(0);
     }
 }
