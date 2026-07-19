@@ -1,5 +1,7 @@
 use std::path::Path;
 
+use anyhow::bail;
+
 use crate::build_manifest::BuildManifest;
 use crate::bundlers::MacosInstallerKind;
 use crate::bundlers::macos_app_bundler::MacosAppBundler;
@@ -46,6 +48,9 @@ impl<'a> MacosBundler<'a> {
                             target,
                             bundle,
                         )?;
+                    }
+                    MacosInstallerKind::Dmg => {
+                        bail!("dmg bundle support is not implemented yet");
                     }
                 }
             }

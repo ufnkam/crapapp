@@ -7,6 +7,7 @@ use strum_macros::Display;
 pub enum WindowsInstallerKind {
     Cli,
     Gui,
+    Msi,
 }
 
 impl WindowsInstallerKind {
@@ -14,12 +15,14 @@ impl WindowsInstallerKind {
         match self {
             WindowsInstallerKind::Cli => "cli",
             WindowsInstallerKind::Gui => "gui",
+            WindowsInstallerKind::Msi => "msi",
         }
     }
 
     pub fn installer_binary_name(self) -> &'static str {
         match self {
             WindowsInstallerKind::Cli | WindowsInstallerKind::Gui => "setup.exe",
+            WindowsInstallerKind::Msi => "setup.msi",
         }
     }
 }

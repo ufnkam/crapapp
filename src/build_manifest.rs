@@ -9,7 +9,7 @@ use crate::manifest_file::{
     CrapManifest, PlatformConfig, PlatformManifest as SourcePlatformManifest,
 };
 use crate::payload_file::{payload_files, resolve_destination};
-use crate::platform_manifest::{BasicPlatformManifest, PlatformBuildManifest, PlatformManifest};
+use crate::platform_manifest::{PlatformBuildManifest, PlatformManifest};
 use crate::platform_manifests::MacosPlatformManifest;
 use crate::target_manifest::TargetManifest;
 use std::path::Path;
@@ -98,9 +98,9 @@ impl BuildManifest {
                         macos_eulas,
                     ))
                 }
-                PlatformConfig::Linux(_) => PlatformBuildManifest::Linux(
-                    BasicPlatformManifest::new(platform.name(), targets),
-                ),
+                PlatformConfig::Linux(linux) => {
+                    PlatformBuildManifest::Linux(linux.build(targets, display_icon_source))
+                }
             });
         }
 

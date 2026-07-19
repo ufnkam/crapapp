@@ -2,21 +2,22 @@ use std::path::Path;
 
 use anyhow::bail;
 
-use crate::bundlers::win_binary_bundler::WinBinaryBundler;
-use crate::platform_manifests::WindowsPlatformManifest;
+use crate::build_manifest::BuildManifest;
+use crate::bundlers::LinuxInstallerKind;
+use crate::bundlers::linux_deb_bundler::LinuxDebBundler;
+use crate::platform_manifests::LinuxPlatformManifest;
 use crate::target_manifest::TargetManifest;
-use crate::{build_manifest::BuildManifest, bundlers::windows_installer::WindowsInstallerKind};
 
-pub struct WindowsBundler<'a> {
+pub struct LinuxBundler<'a> {
     build_manifest: &'a BuildManifest,
-    platform: &'a WindowsPlatformManifest<TargetManifest>,
+    platform: &'a LinuxPlatformManifest<TargetManifest>,
     build_dir: &'a Path,
 }
 
-impl<'a> WindowsBundler<'a> {
+impl<'a> LinuxBundler<'a> {
     pub fn new(
         build_manifest: &'a BuildManifest,
-        platform: &'a WindowsPlatformManifest<TargetManifest>,
+        platform: &'a LinuxPlatformManifest<TargetManifest>,
         build_dir: &'a Path,
     ) -> Self {
         Self {
@@ -30,8 +31,8 @@ impl<'a> WindowsBundler<'a> {
         for target in &self.platform.targets {
             for bundle in &self.platform.bundle {
                 match bundle {
-                    WindowsInstallerKind::Cli | WindowsInstallerKind::Gui => {
-                        WinBinaryBundler::bundle(
+                    LinuxInstallerKind::Deb => {
+                        LinuxDebBundler::bundle(
                             self.build_manifest,
                             self.build_dir,
                             self.platform,
@@ -39,8 +40,11 @@ impl<'a> WindowsBundler<'a> {
                             bundle,
                         )?;
                     }
-                    WindowsInstallerKind::Msi => {
-                        bail!("msi bundle support is not implemented yet");
+                    LinuxInstallerKind::Rpm => {
+                        bail!("rpm bundle support is not implemented yet");
+                    }
+                    LinuxInstallerKind::Aur => {
+                        bail!("aur bundle support is not implemented yet");
                     }
                 }
             }

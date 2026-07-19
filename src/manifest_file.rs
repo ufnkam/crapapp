@@ -1,5 +1,5 @@
-use crate::bundlers::{MacosInstallerKind, WindowsInstallerKind};
-use crate::platform_manifests::{MacosPkgConfig, WindowsPlatformManifest};
+use crate::bundlers::{LinuxInstallerKind, MacosInstallerKind, WindowsInstallerKind};
+use crate::platform_manifests::{LinuxPlatformManifest, MacosPkgConfig, WindowsPlatformManifest};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::path::Path;
@@ -12,7 +12,7 @@ pub struct CrapManifest {
     pub build: Option<BuildConfig>,
     pub windows: Option<WindowsPlatformManifest>,
     pub macos: Option<MacosPlatform>,
-    pub linux: Option<LinuxPlatform>,
+    pub linux: Option<LinuxPlatformManifest>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -49,7 +49,7 @@ impl CrapManifest {
 pub enum PlatformConfig<'a> {
     Windows(&'a WindowsPlatformManifest),
     Macos(&'a MacosPlatform),
-    Linux(&'a LinuxPlatform),
+    Linux(&'a LinuxPlatformManifest),
 }
 
 pub trait PlatformManifest {
@@ -250,10 +250,32 @@ where
     )
 }
 
+pub(crate) fn deserialize_linux_bundles<'de, D>(
+    deserializer: D,
+) -> Result<Vec<LinuxInstallerKind>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum LinuxInstallerList {
+        One(LinuxInstallerKind),
+        Many(Vec<LinuxInstallerKind>),
+    }
+
+    Ok(
+        match Option::<LinuxInstallerList>::deserialize(deserializer)? {
+            Some(LinuxInstallerList::One(installer)) => vec![installer],
+            Some(LinuxInstallerList::Many(installers)) => installers,
+            None => Vec::new(),
+        },
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::CrapManifest;
-    use crate::bundlers::{MacosInstallerKind, WindowsInstallerKind};
+    use crate::bundlers::{LinuxInstallerKind, MacosInstallerKind, WindowsInstallerKind};
 
     fn parse_manifest(source: &str) -> CrapManifest {
         toml::from_str(source).expect("manifest should parse")
@@ -437,6 +459,45 @@ mod tests {
         assert!(macos.eulas[0].required());
         assert!(!macos.eulas[1].required());
     }
+
+    #[test]
+    fn linux_bundle_config_parses() {
+        let manifest = parse_manifest(
+            r#"
+            [linux]
+            targets = ["x86_64-unknown-linux-gnu"]
+            bundle = ["deb", "rpm", "aur", "deb"]
+            install_path = "/opt/example"
+            bin_dir = "/usr/bin"
+            display_icon = "assets/app.png"
+            files = [
+                { source = "Cargo.toml", destination = "share/example/Cargo.toml" },
+            ]
+            associated_files = [
+                { path = "/var/lib/example", kind = "directory" },
+            ]
+            eulas = [
+                "EULA.txt",
+                { path = "THIRD_PARTY.txt", required = false },
+            ]
+            "#,
+        );
+
+        let linux = manifest.linux.expect("linux platform should exist");
+        assert_eq!(
+            linux.bundles(),
+            vec![
+                LinuxInstallerKind::Deb,
+                LinuxInstallerKind::Rpm,
+                LinuxInstallerKind::Aur
+            ]
+        );
+        assert_eq!(linux.install_path.as_deref(), Some("/opt/example"));
+        assert_eq!(linux.bin_dir.as_deref(), Some("/usr/bin"));
+        assert_eq!(linux.associated_files.len(), 1);
+        assert_eq!(linux.eulas.len(), 2);
+        assert!(!linux.eulas[1].required());
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -505,45 +566,6 @@ impl PlatformManifest for MacosPlatform {
 
     fn targets(&self) -> Vec<&'static str> {
         self.targets.iter().map(MacosTarget::target).collect()
-    }
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct LinuxPlatform {
-    #[serde(default)]
-    pub targets: Vec<LinuxTarget>,
-    #[serde(default)]
-    pub files: Vec<FileMapping>,
-}
-
-impl PlatformManifest for LinuxPlatform {
-    fn name(&self) -> &'static str {
-        "linux"
-    }
-
-    fn bin_dir(&self) -> &str {
-        "bin"
-    }
-
-    fn install_path(&self) -> Option<&str> {
-        None
-    }
-
-    fn variable_sources(&self) -> Vec<&str> {
-        Vec::new()
-    }
-
-    fn files(&self) -> &[FileMapping] {
-        &self.files
-    }
-
-    fn display_icon(&self) -> Option<&str> {
-        None
-    }
-
-    fn targets(&self) -> Vec<&'static str> {
-        self.targets.iter().map(LinuxTarget::target).collect()
     }
 }
 

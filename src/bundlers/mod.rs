@@ -1,3 +1,6 @@
+mod linux_bundler;
+mod linux_deb_bundler;
+mod linux_installer;
 mod macos_app_bundler;
 mod macos_bundler;
 mod macos_installer;
@@ -7,6 +10,8 @@ mod win_binary_bundler;
 mod windows_bundler;
 mod windows_installer;
 
+pub use linux_bundler::LinuxBundler;
+pub use linux_installer::LinuxInstallerKind;
 pub use macos_bundler::MacosBundler;
 pub use macos_installer::MacosInstallerKind;
 pub use windows_bundler::WindowsBundler;

@@ -5,7 +5,7 @@ use std::process::Command;
 use anyhow::{Context, Result, bail};
 
 use crate::build_manifest::BuildManifest;
-use crate::bundlers::{MacosBundler, WindowsBundler};
+use crate::bundlers::{LinuxBundler, MacosBundler, WindowsBundler};
 use crate::platform_manifest::{PlatformBuildManifest, PlatformManifest};
 
 pub struct Builder<'a> {
@@ -52,6 +52,12 @@ impl<'a> Builder<'a> {
             self.build_manifest.get_platform_config("macos")
         {
             MacosBundler::new(self.build_manifest, platform, &build_dir).bundle()?;
+        }
+
+        if let Some(PlatformBuildManifest::Linux(platform)) =
+            self.build_manifest.get_platform_config("linux")
+        {
+            LinuxBundler::new(self.build_manifest, platform, &build_dir).bundle()?;
         }
 
         Ok(())

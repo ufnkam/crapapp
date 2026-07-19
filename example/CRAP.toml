@@ -30,11 +30,18 @@ display_icon = "build_assets/icon.ico"
 bundle = [ "gui" ]
 
 # [linux]
-# targets = [
-#     "x86_64-unknown-linux-gnu",
-# ]
+# targets = ["x86_64-unknown-linux-gnu"]
+# bundle = "deb"
+# bin_dir = "/usr/bin"
 # files = [
-#     { source = "Cargo.toml", destination = "etc/example/Cargo.toml" },
+#     { source = "Cargo.toml", destination = "/usr/share/doc/example/Cargo.toml" },
+# ]
+# associated_files = [
+#     { path = "/var/lib/example", kind = "directory" },
+# ]
+# eulas = [
+#     { path = "EULA.txt" },
+#     { path = "EULA2.txt", required = false },
 # ]
 [macos]
 targets = [

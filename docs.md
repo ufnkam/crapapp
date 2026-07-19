@@ -61,9 +61,11 @@ Bundler output currently lands in:
 .crapapp_build/windows/<target>/<bundle>/setup.exe
 .crapapp_build/macos/<target>/app/<display-name-or-package-name>.app
 .crapapp_build/macos/<target>/pkg/<display-name-or-package-name>.pkg
+.crapapp_build/linux/<target>/deb/<package-name>.deb
 ```
 
-Linux output and macOS DMG output are not supported yet.
+Windows MSI, macOS DMG, Linux RPM, and Linux AUR output are recognized in the
+manifest but their package writers are not implemented yet.
 
 ## CRAP.toml quick start
 
@@ -115,6 +117,22 @@ identifier = "com.acme.launcher"
 install_path = "/Applications"
 bin_dir = "/usr/local/bin"
 link_bins = true
+
+[linux]
+targets = ["x86_64-unknown-linux-gnu"]
+bundle = "deb"
+bin_dir = "/usr/bin"
+display_icon = "assets/app.png"
+files = [
+    { source = "assets", destination = "/usr/share/acme-launcher/assets" },
+]
+associated_files = [
+    { path = "/var/lib/acme-launcher", kind = "directory" },
+]
+eulas = [
+    { path = "EULA.txt" },
+    { path = "THIRD_PARTY.txt", required = false },
+]
 ```
 
 ## Build section
@@ -186,12 +204,13 @@ Supported values:
 
 - `cli`, generates a command-line setup executable.
 - `gui`, generates a graphical setup executable.
+- `msi`, recognized in the manifest; the package writer is not implemented yet.
 
 You can build more than one bundle for the same target:
 
 ```toml
 [windows]
-bundle = ["cli", "gui"]
+bundle = ["cli", "gui", "msi"]
 ```
 
 Outputs are grouped by bundle name:
@@ -199,6 +218,7 @@ Outputs are grouped by bundle name:
 ```text
 .crapapp_build/windows/<target>/cli/setup.exe
 .crapapp_build/windows/<target>/gui/setup.exe
+.crapapp_build/windows/<target>/msi/setup.msi
 ```
 
 ### Windows install path
@@ -356,7 +376,7 @@ The `[macos]` section creates `.app` bundles. Each configured target produces:
 
 `bundle` is optional and defaults to `app`. It accepts either a single value
 or a list, matching the Windows bundle field. Supported macOS bundle kinds are
-`app` and `pkg`.
+`app`, `pkg`, and `dmg`. The `dmg` package writer is not implemented yet.
 
 Application executables are copied into `Contents/MacOS` for the `.app` bundle.
 Extra `files` entries are copied to their configured destination relative to
@@ -408,13 +428,21 @@ For pkg output, cargo-crapapp merges the configured files into
 The `required` flag is preserved in the merged text for consistency, but Apple
 Installer treats the license screen as one agreement.
 
-DMG output is not supported yet.
+DMG output is recognized in the manifest but its package writer is not
+implemented yet.
 
 ## Linux
 
-Linux installable output is not supported yet. The manifest parser accepts a
-`[linux]` section so the build manifest shape can evolve across platforms, but
-`cargo crapapp bundle` does not produce Linux packages yet.
+The `[linux]` section supports the same core fields as the other platforms:
+`bundle`, `install_path`, `bin_dir`, `files`, `associated_files`, `eulas`, and
+`display_icon`. Supported Linux bundle values are `deb`, `rpm`, and `aur`.
+
+`deb` output writes a Debian binary package directly, without calling
+`dpkg-deb`. The package includes configured payload files, associated
+files/directories, and EULA files under `/usr/share/doc/<package>/licenses`.
+
+`rpm` and `aur` are recognized in the manifest but their package writers are not
+implemented yet.
 
 # libcrapapp
 
