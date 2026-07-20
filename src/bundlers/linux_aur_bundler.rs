@@ -5,14 +5,14 @@ use anyhow::Context;
 
 use crate::build_manifest::BuildManifest;
 use crate::bundlers::LinuxInstallerKind;
-use crate::linux_deb::{self, DebSpec};
-use crate::linux_package::{deb_architecture, package_name};
+use crate::linux_aur::{self, AurSpec};
+use crate::linux_package::{aur_architecture, package_name};
 use crate::platform_manifests::LinuxPlatformManifest;
 use crate::target_manifest::TargetManifest;
 
-pub struct LinuxDebBundler {}
+pub struct LinuxAurBundler {}
 
-impl LinuxDebBundler {
+impl LinuxAurBundler {
     pub fn bundle(
         build_manifest: &BuildManifest,
         build_dir: &Path,
@@ -32,28 +32,23 @@ impl LinuxDebBundler {
         fs::create_dir_all(&target_dir)
             .with_context(|| format!("failed to create {}", target_dir.display()))?;
 
-        let package_name = package_name(&build_manifest.app_name);
-        let output = target_dir.join(format!("{package_name}.deb"));
-        let spec = DebSpec {
-            package: package_name,
+        let package = package_name(&build_manifest.app_name);
+        let output = target_dir.join(format!("{package}.src.tar.gz"));
+        let spec = AurSpec {
+            package,
             version: build_manifest.version.clone(),
-            maintainer: build_manifest
-                .build
-                .publisher
-                .clone()
-                .unwrap_or_else(|| "unknown".to_owned()),
             description: build_manifest
                 .build
                 .display_name
                 .clone()
                 .unwrap_or_else(|| build_manifest.app_name.clone()),
-            architecture: deb_architecture(&target_manifest.target)?.to_owned(),
+            architecture: aur_architecture(&target_manifest.target)?.to_owned(),
             files: target_manifest.files.clone(),
             associated_files: platform_manifest.associated_files.clone(),
             eulas: platform_manifest.eulas.clone(),
         };
 
-        linux_deb::build(&spec, &output)
+        linux_aur::build(&spec, &output)
             .with_context(|| format!("failed to write {}", output.display()))?;
 
         Ok(())

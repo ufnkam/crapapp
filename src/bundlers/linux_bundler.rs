@@ -1,10 +1,10 @@
 use std::path::Path;
 
-use anyhow::bail;
-
 use crate::build_manifest::BuildManifest;
 use crate::bundlers::LinuxInstallerKind;
+use crate::bundlers::linux_aur_bundler::LinuxAurBundler;
 use crate::bundlers::linux_deb_bundler::LinuxDebBundler;
+use crate::bundlers::linux_rpm_bundler::LinuxRpmBundler;
 use crate::platform_manifests::LinuxPlatformManifest;
 use crate::target_manifest::TargetManifest;
 
@@ -41,10 +41,22 @@ impl<'a> LinuxBundler<'a> {
                         )?;
                     }
                     LinuxInstallerKind::Rpm => {
-                        bail!("rpm bundle support is not implemented yet");
+                        LinuxRpmBundler::bundle(
+                            self.build_manifest,
+                            self.build_dir,
+                            self.platform,
+                            target,
+                            bundle,
+                        )?;
                     }
                     LinuxInstallerKind::Aur => {
-                        bail!("aur bundle support is not implemented yet");
+                        LinuxAurBundler::bundle(
+                            self.build_manifest,
+                            self.build_dir,
+                            self.platform,
+                            target,
+                            bundle,
+                        )?;
                     }
                 }
             }

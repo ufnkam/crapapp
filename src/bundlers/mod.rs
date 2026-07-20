@@ -1,6 +1,8 @@
+mod linux_aur_bundler;
 mod linux_bundler;
 mod linux_deb_bundler;
 mod linux_installer;
+mod linux_rpm_bundler;
 mod macos_app_bundler;
 mod macos_bundler;
 mod macos_installer;

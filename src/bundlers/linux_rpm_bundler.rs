@@ -5,14 +5,14 @@ use anyhow::Context;
 
 use crate::build_manifest::BuildManifest;
 use crate::bundlers::LinuxInstallerKind;
-use crate::linux_deb::{self, DebSpec};
-use crate::linux_package::{deb_architecture, package_name};
+use crate::linux_package::{package_name, rpm_architecture};
+use crate::linux_rpm::{self, RpmSpec};
 use crate::platform_manifests::LinuxPlatformManifest;
 use crate::target_manifest::TargetManifest;
 
-pub struct LinuxDebBundler {}
+pub struct LinuxRpmBundler {}
 
-impl LinuxDebBundler {
+impl LinuxRpmBundler {
     pub fn bundle(
         build_manifest: &BuildManifest,
         build_dir: &Path,
@@ -32,28 +32,27 @@ impl LinuxDebBundler {
         fs::create_dir_all(&target_dir)
             .with_context(|| format!("failed to create {}", target_dir.display()))?;
 
-        let package_name = package_name(&build_manifest.app_name);
-        let output = target_dir.join(format!("{package_name}.deb"));
-        let spec = DebSpec {
-            package: package_name,
+        let package = package_name(&build_manifest.app_name);
+        let output = target_dir.join(format!("{package}-{}-1.rpm", build_manifest.version));
+        let description = build_manifest
+            .build
+            .display_name
+            .clone()
+            .unwrap_or_else(|| build_manifest.app_name.clone());
+        let spec = RpmSpec {
+            package,
             version: build_manifest.version.clone(),
-            maintainer: build_manifest
-                .build
-                .publisher
-                .clone()
-                .unwrap_or_else(|| "unknown".to_owned()),
-            description: build_manifest
-                .build
-                .display_name
-                .clone()
-                .unwrap_or_else(|| build_manifest.app_name.clone()),
-            architecture: deb_architecture(&target_manifest.target)?.to_owned(),
+            release: "1".to_owned(),
+            summary: description.clone(),
+            description,
+            architecture: rpm_architecture(&target_manifest.target)?.to_owned(),
+            license: "custom".to_owned(),
             files: target_manifest.files.clone(),
             associated_files: platform_manifest.associated_files.clone(),
             eulas: platform_manifest.eulas.clone(),
         };
 
-        linux_deb::build(&spec, &output)
+        linux_rpm::build(&spec, &output)
             .with_context(|| format!("failed to write {}", output.display()))?;
 
         Ok(())

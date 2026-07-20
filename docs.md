@@ -62,10 +62,12 @@ Bundler output currently lands in:
 .crapapp_build/macos/<target>/app/<display-name-or-package-name>.app
 .crapapp_build/macos/<target>/pkg/<display-name-or-package-name>.pkg
 .crapapp_build/linux/<target>/deb/<package-name>.deb
+.crapapp_build/linux/<target>/rpm/<package-name>-<version>-1.rpm
+.crapapp_build/linux/<target>/aur/<package-name>.src.tar.gz
 ```
 
-Windows MSI, macOS DMG, Linux RPM, and Linux AUR output are recognized in the
-manifest but their package writers are not implemented yet.
+Windows MSI and macOS DMG output are recognized in the manifest but their
+package writers are not implemented yet.
 
 ## CRAP.toml quick start
 
@@ -319,25 +321,33 @@ The pkg writer is implemented in Rust and does not call `pkgbuild`,
 
 Fields:
 
-- `targets`: optional array of target triples. Supported values are
-  `x86_64-unknown-linux-gnu` and `x86_64-unknown-linux-musl`.
+- `targets`: optional array of target triples. Supported value is
+  `x86_64-unknown-linux-gnu`.
 - `bundle`: optional string or array. Defaults to `deb`. Values are `deb`,
-  `rpm`, and `aur`. `deb` is implemented; `rpm` and `aur` are parsed but not
-  implemented yet.
+  `rpm`, and `aur`.
 - `install_path`: optional string. If present, relative binary and payload
   destinations are prefixed with it in the build manifest.
 - `bin_dir`: optional string, default `/usr/bin`. Cargo binaries are installed
   there, or under `install_path/bin_dir` when `install_path` is present and the
   destination is not already prefixed.
 - `files`: optional array of payload file mappings.
-- `associated_files`: optional array of associated file mappings. deb output
-  creates these as empty files or directories in the package payload.
+- `associated_files`: optional array of associated file mappings. Linux package
+  output creates these as empty files or directories in the package payload.
 - `eulas`: optional array of EULA files. deb output installs them under
-  `/usr/share/doc/<package>/licenses`.
+  `/usr/share/doc/<package>/licenses`; rpm and AUR output install them under
+  `/usr/share/licenses/<package>`.
 - `display_icon`: optional path. Parsed and shown by `inspect`; Linux package
   writers do not install desktop integration from it yet.
 
-The deb writer is implemented in Rust and does not call `dpkg-deb`.
+The deb, rpm, and AUR writers are implemented in Rust and do not call
+`dpkg-deb`, `rpmbuild`, or `makepkg`.
+
+Building `x86_64-unknown-linux-gnu` from macOS requires a Linux GNU linker and
+sysroot. The Rust target alone is not enough, because glibc targets still link
+against Linux system libraries such as `libc`, `libpthread`, and `libdl`. If
+those tools are not configured, build the Linux binaries on Linux and run
+`cargo crapapp bundle --no-build`, or configure Cargo with an appropriate Linux
+toolchain.
 
 # libcrapapp
 
