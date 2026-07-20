@@ -27,8 +27,7 @@ eulas = [
     { path = "EULA2.txt", required = false },
 ]
 display_icon = "build_assets/icon.ico"
-bundle = [ "gui" ]
-# bundle = [ "gui", "msi" ] # msi is parsed, package writer is not implemented yet
+bundle = [ "gui", "msi" ]
 
 [linux]
 targets = ["x86_64-unknown-linux-gnu"]

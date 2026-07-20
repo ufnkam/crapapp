@@ -59,6 +59,7 @@ Bundler output currently lands in:
 
 ```text
 .crapapp_build/windows/<target>/<bundle>/setup.exe
+.crapapp_build/windows/<target>/msi/<display-name-or-package-name>.msi
 .crapapp_build/macos/<target>/app/<display-name-or-package-name>.app
 .crapapp_build/macos/<target>/pkg/<display-name-or-package-name>.pkg
 .crapapp_build/linux/<target>/deb/<package-name>.deb
@@ -66,8 +67,8 @@ Bundler output currently lands in:
 .crapapp_build/linux/<target>/aur/<package-name>.src.tar.gz
 ```
 
-Windows MSI and macOS DMG output are recognized in the manifest but their
-package writers are not implemented yet.
+macOS DMG output is recognized in the manifest but its package writer is not
+implemented yet.
 
 ## CRAP.toml quick start
 
@@ -227,8 +228,8 @@ Fields:
   `x86_64-pc-windows-gnu`, `x86_64-pc-windows-msvc`,
   `aarch64-pc-windows-gnullvm`, and `aarch64-pc-windows-msvc`.
 - `bundle`: optional string or array. Defaults to `cli`. Values are `cli`,
-  `gui`, and `msi`. `cli` and `gui` generate `setup.exe`; `msi` is parsed but
-  not implemented yet.
+  `gui`, and `msi`. `cli` and `gui` generate `setup.exe`; `msi` generates a
+  Windows Installer database with an embedded cabinet payload.
 - `install_path`: optional string. If present, relative binary and payload
   destinations are prefixed with it in the build manifest. `$INSTALLPATH` is
   resolved by the generated installer at runtime.
@@ -245,6 +246,11 @@ Fields:
   header. The uninstall registry `DisplayIcon` points at the installed app
   executable. cargo-crapapp does not modify your built application executable
   icon.
+
+MSI support covers payload files, Start Menu shortcuts, shortcut icons,
+Add/Remove Programs product icons, and `$INSTALLPATH`/`$HOMEPATH` associated
+files and directories through standard Windows Installer tables. PATH mutation
+and EULA UI are still handled by the generated `cli`/`gui` setup executables.
 
 `shortcuts` fields:
 

@@ -1,8 +1,7 @@
 use std::path::Path;
 
-use anyhow::bail;
-
 use crate::bundlers::win_binary_bundler::WinBinaryBundler;
+use crate::bundlers::windows_msi_bundler::WindowsMsiBundler;
 use crate::platform_manifests::WindowsPlatformManifest;
 use crate::target_manifest::TargetManifest;
 use crate::{build_manifest::BuildManifest, bundlers::windows_installer::WindowsInstallerKind};
@@ -40,7 +39,13 @@ impl<'a> WindowsBundler<'a> {
                         )?;
                     }
                     WindowsInstallerKind::Msi => {
-                        bail!("msi bundle support is not implemented yet");
+                        WindowsMsiBundler::bundle(
+                            self.build_manifest,
+                            self.build_dir,
+                            self.platform,
+                            target,
+                            bundle,
+                        )?;
                     }
                 }
             }

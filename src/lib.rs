@@ -20,6 +20,7 @@ mod platform_manifest;
 mod platform_manifests;
 mod target_manifest;
 mod windows_installer;
+mod windows_msi;
 
 /// Windows build-script helpers for application binaries.
 #[cfg(feature = "windows")]

@@ -11,6 +11,7 @@ pub(crate) mod shared;
 mod win_binary_bundler;
 mod windows_bundler;
 mod windows_installer;
+mod windows_msi_bundler;
 
 pub use linux_bundler::LinuxBundler;
 pub use linux_installer::LinuxInstallerKind;
