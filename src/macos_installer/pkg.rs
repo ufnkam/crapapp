@@ -4,6 +4,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, bail};
+use chrono::{DateTime, SecondsFormat, TimeZone, Utc};
 use flate2::Compression;
 use flate2::write::{GzEncoder, ZlibEncoder};
 use quick_xml::Writer;
@@ -15,9 +16,6 @@ const XAR_HEADER_SIZE: u16 = 28;
 const XAR_VERSION: u16 = 1;
 const XAR_SHA1: u32 = 1;
 const SHA1_LEN: u64 = 20;
-const TIMESTAMP: &str = "2000-01-01T00:00:00Z";
-const CPIO_TIMESTAMP: u64 = 946_684_800;
-
 #[derive(Debug, Clone)]
 pub struct FileSpec {
     pub src: PathBuf,
@@ -30,6 +28,7 @@ pub struct PkgSpec {
     pub display_name: String,
     pub identifier: String,
     pub version: String,
+    pub bundled_at: String,
     pub install_path: String,
     pub license: Option<Vec<u8>>,
     pub files: Vec<FileSpec>,
@@ -39,7 +38,8 @@ pub fn build(spec: &PkgSpec, output: &Path) -> anyhow::Result<()> {
     validate(spec)?;
 
     let nodes = payload_nodes(&spec.files)?;
-    let payload = gzip(&cpio_payload(&nodes)?)?;
+    let bundled_at = package_time(&spec.bundled_at);
+    let payload = gzip(&cpio_payload(&nodes, bundled_at.timestamp().max(0) as u64)?)?;
     let package_info = package_info(spec, &nodes)?;
     let distribution = distribution(spec, install_kbytes(&nodes))?;
     let bom = placeholder_bom();
@@ -66,7 +66,7 @@ pub fn build(spec: &PkgSpec, output: &Path) -> anyhow::Result<()> {
         fs::create_dir_all(parent)
             .with_context(|| format!("failed to create {}", parent.display()))?;
     }
-    fs::write(output, xar_archive(&entries)?)
+    fs::write(output, xar_archive(&entries, bundled_at)?)
         .with_context(|| format!("failed to write {}", output.display()))?;
 
     Ok(())
@@ -153,7 +153,17 @@ fn is_executable(_path: &Path) -> anyhow::Result<bool> {
     Ok(false)
 }
 
-fn cpio_payload(nodes: &BTreeMap<String, PayloadNode>) -> anyhow::Result<Vec<u8>> {
+fn package_time(value: &str) -> chrono::DateTime<Utc> {
+    DateTime::parse_from_rfc3339(value)
+        .map(|value| value.with_timezone(&Utc))
+        .unwrap_or_else(|_| {
+            Utc.with_ymd_and_hms(2000, 1, 1, 0, 0, 0)
+                .single()
+                .expect("fixed source date must be valid")
+        })
+}
+
+fn cpio_payload(nodes: &BTreeMap<String, PayloadNode>, timestamp: u64) -> anyhow::Result<Vec<u8>> {
     let mut payload = Vec::new();
     let mut inode = 1;
 
@@ -161,7 +171,7 @@ fn cpio_payload(nodes: &BTreeMap<String, PayloadNode>) -> anyhow::Result<Vec<u8>
         inode += 1;
         match node {
             PayloadNode::Directory => {
-                write_cpio_entry(&mut payload, inode, path, 0o040755, 2, CPIO_TIMESTAMP, &[])?
+                write_cpio_entry(&mut payload, inode, path, 0o040755, 2, timestamp, &[])?
             }
             PayloadNode::File { bytes, mode } => write_cpio_entry(
                 &mut payload,
@@ -169,21 +179,13 @@ fn cpio_payload(nodes: &BTreeMap<String, PayloadNode>) -> anyhow::Result<Vec<u8>
                 path,
                 0o100000 | mode,
                 1,
-                CPIO_TIMESTAMP,
+                timestamp,
                 bytes,
             )?,
         }
     }
 
-    write_cpio_entry(
-        &mut payload,
-        inode + 1,
-        "TRAILER!!!",
-        0,
-        1,
-        CPIO_TIMESTAMP,
-        &[],
-    )?;
+    write_cpio_entry(&mut payload, inode + 1, "TRAILER!!!", 0, 1, timestamp, &[])?;
     while payload.len() % 512 != 0 {
         payload.push(0);
     }
@@ -292,6 +294,10 @@ fn distribution(spec: &PkgSpec, install_kbytes: u64) -> anyhow::Result<Vec<u8>> 
     let mut root = BytesStart::new("installer-gui-script");
     root.push_attribute(("minSpecVersion", "2"));
     writer.write_event(Event::Start(root))?;
+    writer.write_event(Event::Comment(BytesText::new(&format!(
+        " Bundled-At: {} ",
+        spec.bundled_at
+    ))))?;
     text_element(&mut writer, "title", &spec.display_name)?;
     if spec.license.is_some() {
         let mut license = BytesStart::new("license");
@@ -401,7 +407,7 @@ struct XarFileData<'a> {
     offset: u64,
 }
 
-fn xar_archive(entries: &[XarEntry]) -> anyhow::Result<Vec<u8>> {
+fn xar_archive(entries: &[XarEntry], created_at: chrono::DateTime<Utc>) -> anyhow::Result<Vec<u8>> {
     let mut file_data = Vec::new();
     collect_xar_file_data(entries, &mut file_data);
 
@@ -411,7 +417,7 @@ fn xar_archive(entries: &[XarEntry]) -> anyhow::Result<Vec<u8>> {
         offset += data.bytes.len() as u64;
     }
 
-    let toc = xar_toc(entries, &file_data)?;
+    let toc = xar_toc(entries, &file_data, created_at)?;
     let toc_zlib = zlib(&toc)?;
     let toc_checksum = sha1(&toc_zlib);
 
@@ -440,7 +446,11 @@ fn collect_xar_file_data<'a>(entries: &'a [XarEntry], data: &mut Vec<XarFileData
     }
 }
 
-fn xar_toc(entries: &[XarEntry], file_data: &[XarFileData<'_>]) -> anyhow::Result<Vec<u8>> {
+fn xar_toc(
+    entries: &[XarEntry],
+    file_data: &[XarFileData<'_>],
+    created_at: chrono::DateTime<Utc>,
+) -> anyhow::Result<Vec<u8>> {
     let mut writer = Writer::new_with_indent(Vec::new(), b' ', 4);
     let mut id = 1;
     let mut data_index = 0;
@@ -448,7 +458,11 @@ fn xar_toc(entries: &[XarEntry], file_data: &[XarFileData<'_>]) -> anyhow::Resul
     writer.write_event(Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))?;
     writer.write_event(Event::Start(BytesStart::new("xar")))?;
     writer.write_event(Event::Start(BytesStart::new("toc")))?;
-    text_element(&mut writer, "creation-time", TIMESTAMP)?;
+    text_element(
+        &mut writer,
+        "creation-time",
+        &created_at.to_rfc3339_opts(SecondsFormat::Secs, true),
+    )?;
 
     let mut checksum = BytesStart::new("checksum");
     checksum.push_attribute(("style", "sha1"));
@@ -536,8 +550,7 @@ fn hex(bytes: &[u8]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{cpio_payload, payload_nodes};
-    use crate::macos_pkg::FileSpec;
+    use super::{FileSpec, cpio_payload, payload_nodes};
     use std::fs;
 
     #[test]
@@ -555,7 +568,7 @@ mod tests {
             dest: "usr/local/bin/example".to_owned(),
         }])
         .expect("nodes should be created");
-        let payload = cpio_payload(&nodes).expect("payload should be created");
+        let payload = cpio_payload(&nodes, 946684800).expect("payload should be created");
 
         assert!(
             payload

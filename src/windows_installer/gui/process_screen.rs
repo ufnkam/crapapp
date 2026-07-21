@@ -478,7 +478,7 @@ fn uninstall(
         Step::RemovingRegistryEntries,
         "Removing application uninstall metadata",
     );
-    remove_registry_key(config);
+    remove_registry_key(config, &install_root);
 
     emit.progress(
         range.end,
@@ -489,7 +489,7 @@ fn uninstall(
     Ok(())
 }
 
-fn variables(config: &InstallerConfig, settings: &Settings) -> HashMap<String, String> {
+pub(crate) fn variables(config: &InstallerConfig, settings: &Settings) -> HashMap<String, String> {
     let mut variables = HashMap::new();
 
     if config

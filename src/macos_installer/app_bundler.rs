@@ -7,8 +7,7 @@ use quick_xml::Writer;
 use quick_xml::events::{BytesDecl, BytesEnd, BytesStart, BytesText, Event};
 
 use crate::build_manifest::BuildManifest;
-use crate::bundlers::MacosInstallerKind;
-use crate::bundlers::shared;
+use crate::bundlers::{MacosBundlerKind, shared};
 use crate::payload_file::PayloadFile;
 use crate::platform_manifests::MacosPlatformManifest;
 use crate::target_manifest::TargetManifest;
@@ -24,7 +23,7 @@ impl MacosAppBundler {
         build_dir: &Path,
         platform_manifest: &MacosPlatformManifest,
         target_manifest: &TargetManifest,
-        bundle: &MacosInstallerKind,
+        bundle: &MacosBundlerKind,
     ) -> anyhow::Result<()> {
         if target_manifest.files.is_empty() {
             bail!("macOS app bundle has no files to package");
@@ -44,7 +43,7 @@ impl MacosAppBundler {
         )
     }
 
-    pub(crate) fn bundle_to_path(
+    pub fn bundle_to_path(
         build_manifest: &BuildManifest,
         platform_manifest: &MacosPlatformManifest,
         target_manifest: &TargetManifest,
@@ -101,7 +100,7 @@ impl MacosAppBundler {
     }
 }
 
-pub(crate) fn bundle_name(build_manifest: &BuildManifest) -> String {
+pub fn bundle_name(build_manifest: &BuildManifest) -> String {
     if let Some(display_name) = &build_manifest.build.display_name {
         let display_name = display_name.trim();
 
@@ -309,7 +308,7 @@ fn primary_executable_name<'a>(
     first_executable.ok_or_else(|| anyhow::anyhow!("macOS app bundle has no executable payload"))
 }
 
-pub(crate) fn bundle_identifier(build_manifest: &BuildManifest) -> String {
+pub fn bundle_identifier(build_manifest: &BuildManifest) -> String {
     let app_component = identifier_component(&build_manifest.app_name);
 
     match build_manifest.build.publisher.as_deref() {
@@ -351,7 +350,7 @@ mod tests {
     use super::{MacosAppBundler, bundle_identifier, info_plist, validated_relative_path};
     use crate::build_config_manifest::BuildConfigManifest;
     use crate::build_manifest::BuildManifest;
-    use crate::bundlers::MacosInstallerKind;
+    use crate::bundlers::MacosBundlerKind;
     use crate::payload_file::PayloadFile;
     use crate::platform_manifests::MacosPlatformManifest;
     use crate::target_manifest::TargetManifest;
@@ -450,7 +449,7 @@ mod tests {
             std::process::id()
         ));
         let source_dir = temp_dir.join("source");
-        let executable = source_dir.join("example");
+        let executable = source_dir.join("../../example");
         let data_file = source_dir.join("settings.toml");
 
         let _ = fs::remove_dir_all(&temp_dir);
@@ -477,7 +476,7 @@ mod tests {
             &temp_dir.join("build"),
             &platform_manifest,
             &target_manifest,
-            &MacosInstallerKind::App,
+            &MacosBundlerKind::App,
         )
         .expect("app bundle should be created");
 
@@ -507,7 +506,7 @@ mod tests {
             std::process::id()
         ));
         let source_dir = temp_dir.join("source");
-        let executable = source_dir.join("example");
+        let executable = source_dir.join("../../example");
         let icon = source_dir.join("App Icon.icns");
 
         let _ = fs::remove_dir_all(&temp_dir);
@@ -532,7 +531,7 @@ mod tests {
             &temp_dir.join("build"),
             &platform_manifest,
             &target_manifest,
-            &MacosInstallerKind::App,
+            &MacosBundlerKind::App,
         )
         .expect("app bundle should be created");
 
@@ -556,9 +555,11 @@ mod tests {
         BuildManifest {
             app_name: "example".to_owned(),
             version: "1.0.0".to_owned(),
+            bundled_at: "2000-01-01T00:00:00Z".to_owned(),
             build: BuildConfigManifest {
                 publisher: Some("ufnkam".to_owned()),
                 display_name: None,
+                description: None,
                 packages: Vec::new(),
                 features: Vec::new(),
             },
@@ -583,7 +584,7 @@ mod tests {
             display_icon,
             display_icon_source,
             app_binary,
-            vec![MacosInstallerKind::App],
+            vec![MacosBundlerKind::App],
             Default::default(),
             Vec::new(),
         )

@@ -76,6 +76,8 @@ pub struct InstallerConfig {
     pub app_version: String,
     pub display_name: Option<String>,
     pub publisher: Option<String>,
+    #[serde(default)]
+    pub bundled_at: String,
     #[serde(rename = "variables")]
     pub required_variables: Vec<String>,
     #[serde(default)]
@@ -104,6 +106,7 @@ impl Default for InstallerConfig {
             app_version: "0.0.0".to_owned(),
             display_name: None,
             publisher: None,
+            bundled_at: String::new(),
             required_variables: Vec::new(),
             uninstaller_source: String::new(),
             uninstaller_bytes: &[],

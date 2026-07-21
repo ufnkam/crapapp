@@ -6,7 +6,8 @@ use std::path::Path;
 use libcrapapp::windows_installer::InstallerConfig;
 
 const SETUP_CONFIG: &str = "setup-config.json";
-const SETUP_ICON: &str = "assets/install.ico";
+const SETUP_CONFIG_SOURCE: &str = "{{ installer_dir }}/builder/setup-config.json";
+const SETUP_ICON: &str = "{{ installer_dir }}/assets/install.ico";
 const SETUP_MANIFEST: &str = r#"
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
     <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
@@ -20,9 +21,9 @@ const SETUP_MANIFEST: &str = r#"
 "#;
 
 fn main() {
-    println!("cargo:rerun-if-changed={SETUP_CONFIG}");
+    println!("cargo:rerun-if-changed={SETUP_CONFIG_SOURCE}");
     println!("cargo:rerun-if-changed={SETUP_ICON}");
-    println!("cargo:rerun-if-changed=../assets/install.ico");
+    println!("cargo:rerun-if-changed={{ installer_dir }}/assets/install.ico");
 
     let out_dir = env::var("OUT_DIR").unwrap();
     let out_dir = Path::new(&out_dir);
@@ -43,10 +44,10 @@ fn main() {
 }
 
 fn build_config() -> InstallerConfig {
-    match fs::read_to_string(SETUP_CONFIG) {
+    match fs::read_to_string(SETUP_CONFIG_SOURCE) {
         Ok(config) => serde_json::from_str(&config).unwrap(),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => InstallerConfig::default(),
-        Err(error) => panic!("failed to read {SETUP_CONFIG}: {error}"),
+        Err(error) => panic!("failed to read {SETUP_CONFIG_SOURCE}: {error}"),
     }
 }
 
@@ -69,6 +70,7 @@ fn write_payload(config: &InstallerConfig, out_dir: &Path) -> InstallerConfig {
         app_version: config.app_version.clone(),
         display_name: config.display_name.clone(),
         publisher: config.publisher.clone(),
+        bundled_at: config.bundled_at.clone(),
         required_variables: config.required_variables.clone(),
         uninstaller_source: String::new(),
         uninstaller_bytes: &[],
@@ -97,7 +99,7 @@ fn write_windows_resource() {
     let icon_path = if generated_icon.is_file() {
         generated_icon
     } else {
-        Path::new(&manifest_dir).join("../assets/install.ico")
+        Path::new(&manifest_dir).join("{{ installer_dir }}/assets/install.ico")
     };
     let icon_path = icon_path
         .to_str()

@@ -11,9 +11,7 @@ use crate::manifest_file::{AssociatedFile, AssociatedFileKind};
 use crate::payload_file::PayloadFile;
 use crate::target_manifest::Shortcut;
 
-const CABINET_STREAM: &str = "crapapp.cab";
 const DEFAULT_MANUFACTURER: &str = "unknown";
-const INSTALL_SCOPE_PER_MACHINE: i32 = 1;
 const COMPONENT_64BIT: i32 = 256;
 const HKCU: i32 = 1;
 
@@ -65,10 +63,12 @@ pub fn build(spec: &MsiSpec, output: &Path) -> anyhow::Result<()> {
     let associated_dirs = associated_directories(spec)?;
     let shortcut_rows = shortcuts(spec, &files)?;
     let icons = icons(spec, &files, &shortcut_rows)?;
+    let cabinet_stream = cabinet_stream_name(&spec.package);
     create_schema(&mut package)?;
     insert_rows(
         &mut package,
         spec,
+        &cabinet_stream,
         &files,
         &associated_dirs,
         &shortcut_rows,
@@ -77,7 +77,7 @@ pub fn build(spec: &MsiSpec, output: &Path) -> anyhow::Result<()> {
 
     let cab = cabinet(&files)?;
     package
-        .write_stream(CABINET_STREAM)
+        .write_stream(&cabinet_stream)
         .context("failed to create MSI cabinet stream")?
         .write_all(&cab)
         .context("failed to write MSI cabinet stream")?;
@@ -95,6 +95,27 @@ fn validate(spec: &MsiSpec) -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+fn cabinet_stream_name(package: &str) -> String {
+    let mut name = package
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_') {
+                character
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>()
+        .trim_matches('-')
+        .to_owned();
+
+    if name.is_empty() {
+        name.push_str("app");
+    }
+    name.push_str(".cab");
+    name
 }
 
 #[derive(Clone, Debug)]
@@ -489,6 +510,7 @@ where
 fn insert_rows<W: Read + Write + Seek>(
     package: &mut Package<W>,
     spec: &MsiSpec,
+    cabinet_stream: &str,
     files: &[MsiFile],
     associated_dirs: &[MsiDirectory],
     shortcuts: &[MsiShortcut],
@@ -504,9 +526,10 @@ fn insert_rows<W: Read + Write + Seek>(
         row(["ProductCode", &guid(&product_code(spec))]),
         row(["ProductName", &spec.display_name]),
         row(["ProductVersion", &msi_version(&spec.version)]),
+        row(["ProductLanguage", "1033"]),
         row(["Manufacturer", manufacturer]),
         row(["UpgradeCode", &guid(&upgrade_code(spec))]),
-        row(["ALLUSERS", &INSTALL_SCOPE_PER_MACHINE.to_string()]),
+        row(["MSIINSTALLPERUSER", "1"]),
         row(["ARPNOREPAIR", "1"]),
         row(["ARPNOMODIFY", "1"]),
     ];
@@ -669,7 +692,7 @@ fn insert_rows<W: Read + Write + Seek>(
             Value::Int(1),
             Value::Int(files.len() as i32),
             Value::Null,
-            Value::from(format!("#{CABINET_STREAM}").as_str()),
+            Value::from(format!("#{cabinet_stream}").as_str()),
             Value::Null,
             Value::Null,
         ]],
@@ -695,13 +718,13 @@ fn directory_rows(
         (String::new(), "SourceDir".to_owned()),
     );
     parents.insert(
-        "ProgramFiles64Folder".to_owned(),
+        "LocalAppDataFolder".to_owned(),
         ("TARGETDIR".to_owned(), ".".to_owned()),
     );
     parents.insert(
         "INSTALLFOLDER".to_owned(),
         (
-            "ProgramFiles64Folder".to_owned(),
+            "LocalAppDataFolder".to_owned(),
             default_dir(&spec.display_name),
         ),
     );
@@ -1096,7 +1119,7 @@ mod tests {
     use crate::manifest_file::{AssociatedFile, AssociatedFileKind};
     use crate::payload_file::PayloadFile;
     use crate::target_manifest::Shortcut;
-    use crate::windows_msi::{CABINET_STREAM, MsiSpec, build};
+    use crate::windows_installer::msi::{MsiSpec, build};
 
     #[test]
     fn msi_package_opens_as_installer_database() {
@@ -1133,7 +1156,7 @@ mod tests {
         assert!(package.has_table("Shortcut"));
         assert!(package.has_table("Icon"));
         assert!(package.has_table("CreateFolder"));
-        assert!(package.has_stream(CABINET_STREAM));
+        assert!(package.has_stream("example.cab"));
 
         let _ = fs::remove_dir_all(&temp_dir);
     }

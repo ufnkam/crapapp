@@ -5,6 +5,7 @@ use std::path::PathBuf;
 pub struct CargoPackage {
     pub name: String,
     pub version: String,
+    pub description: Option<String>,
     pub binaries: Vec<String>,
 }
 
@@ -49,6 +50,7 @@ impl CargoPackage {
         Ok(Self {
             name: root_package.name.to_string(),
             version: root_package.version.to_string(),
+            description: root_package.description.clone(),
             binaries,
         })
     }

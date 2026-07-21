@@ -50,7 +50,9 @@ winresource = { version = "0.1.23", optional = true}
 serde-bool = "0.1.4"
 msi = "0.10.0"
 cab = "0.6.0"
+chrono = { version = "0.4.41", default-features = false, features = ["alloc", "clock"] }
 uuid = { version = "1.18.1", features = ["v5"] }
+rpm = { version = "0.25.1", default-features = false, features = ["payload", "gzip-compression"] }
 
 [features]
 default = []

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::bundlers::WindowsInstallerKind;
+use crate::bundlers::WindowsBundlerKind;
 use crate::{
     build_variable::{BuildVariable, get_platform_variables},
     manifest_file::{AssociatedFile, EulaFile, FileMapping, ShortcutMapping, WindowsTarget},
@@ -24,7 +24,7 @@ pub struct WindowsPlatformManifest<Target = WindowsTarget> {
         default,
         deserialize_with = "crate::manifest_file::deserialize_windows_bundles"
     )]
-    pub bundle: Vec<WindowsInstallerKind>,
+    pub bundle: Vec<WindowsBundlerKind>,
     pub install_path: Option<String>,
     pub bin_dir: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -43,9 +43,9 @@ pub struct WindowsPlatformManifest<Target = WindowsTarget> {
 }
 
 impl<Target> WindowsPlatformManifest<Target> {
-    pub fn bundles(&self) -> Vec<WindowsInstallerKind> {
+    pub fn bundles(&self) -> Vec<WindowsBundlerKind> {
         let bundles = if self.bundle.is_empty() {
-            vec![WindowsInstallerKind::Cli]
+            vec![WindowsBundlerKind::Cli]
         } else {
             self.bundle.clone()
         };

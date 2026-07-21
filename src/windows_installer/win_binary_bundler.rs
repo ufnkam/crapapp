@@ -1,5 +1,5 @@
 use crate::build_manifest::BuildManifest;
-use crate::bundlers::WindowsInstallerKind;
+use crate::bundlers::WindowsBundlerKind;
 use crate::bundlers::shared;
 use crate::manifest_file::{AssociatedFileKind as ManifestAssociatedFileKind, EulaFile};
 use crate::payload_file::PayloadFile;
@@ -29,18 +29,19 @@ const DISPLAY_ICON_SIZE: u32 = 256;
 
 fn init_cargo_project(
     project_dir: &Path,
-    installer_kind: &WindowsInstallerKind,
+    installer_kind: &WindowsBundlerKind,
 ) -> anyhow::Result<()> {
     let jinja_env = Environment::new();
-    let src_path = project_dir.join("src");
+    let src_path = project_dir.join("..");
     fs::create_dir_all(&src_path)?;
 
     // build.rs
     let build_rs_path = project_dir.join("build.rs");
-    let build_rs = gen_build_rs(&jinja_env).with_context(|| "Failed to generate build rs")?;
+    let build_rs =
+        gen_build_rs(&jinja_env, installer_kind).with_context(|| "Failed to generate build rs")?;
 
     // cargo.toml
-    let cargo_toml_path = project_dir.join("Cargo.toml");
+    let cargo_toml_path = project_dir.join("../../Cargo.toml");
     let cargo_toml = gen_cargo_toml(&jinja_env, installer_kind)?;
 
     // installer source
@@ -60,16 +61,18 @@ fn init_cargo_project(
     Ok(())
 }
 
-fn gen_build_rs(env: &Environment) -> anyhow::Result<String> {
+fn gen_build_rs(env: &Environment, installer_kind: &WindowsBundlerKind) -> anyhow::Result<String> {
     let build_rs = env.template_from_str(BUILD_RS_TEMPLATE)?;
     let build_rs = build_rs
-        .render(context! {})
+        .render(context! {
+            installer_dir => installer_kind.to_string(),
+        })
         .with_context(|| "failed to render buid.rs")?;
     Ok(build_rs)
 }
 fn gen_cargo_toml(
     env: &Environment,
-    installer_kind: &WindowsInstallerKind,
+    installer_kind: &WindowsBundlerKind,
 ) -> anyhow::Result<String> {
     let cargo_toml = env.template_from_str(SETUP_CARGO_TOML_TEMPLATE)?;
     let libcrapapp_version = env!("CARGO_PKG_VERSION");
@@ -79,6 +82,7 @@ fn gen_cargo_toml(
         .render(context! {
             libcrapapp_dependency => libcrapapp_dep.runtime,
             libcrapapp_build_dependency => libcrapapp_dep.build,
+            installer_dir => installer_kind.to_string(),
         })
         .with_context(|| "failed to render Cargo.toml")?;
     Ok(cargo_toml)
@@ -87,11 +91,11 @@ fn gen_cargo_toml(
 fn gen_source_file(
     asset_path: &str,
     env: &Environment,
-    installer_kind: &WindowsInstallerKind,
+    installer_kind: &WindowsBundlerKind,
 ) -> anyhow::Result<String> {
     let template = env.template_from_str(asset_path)?;
     let res = template.render(context! {
-        gui_installer => matches!(installer_kind, WindowsInstallerKind::Gui),
+        gui_installer => matches!(installer_kind, WindowsBundlerKind::Gui),
     })?;
 
     Ok(res)
@@ -101,7 +105,7 @@ fn prepare_bundler(
     build_dir: &Path,
     platform: &str,
     target: &str,
-    installer_kind: &WindowsInstallerKind,
+    installer_kind: &WindowsBundlerKind,
 ) -> anyhow::Result<PathBuf> {
     let project_dir = build_dir
         .join(platform)
@@ -132,23 +136,20 @@ pub struct LibcrapappDependency {
 }
 
 pub fn libcrapapp_dependency(
-    installer_kind: &WindowsInstallerKind,
+    installer_kind: &WindowsBundlerKind,
     libcrapapp_version: &str,
 ) -> anyhow::Result<LibcrapappDependency> {
-    #[cfg(feature = "dev")]
-    let source = {
-        let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let source = if manifest_dir.join("Cargo.toml").is_file() {
         let manifest_dir = fs::canonicalize(manifest_dir)
             .with_context(|| format!("failed to find {}", manifest_dir.display()))?;
-
         format!(
             r#"package = "cargo-crapapp", path = "{}""#,
             manifest_dir.display()
         )
+    } else {
+        format!(r#"package = "cargo-crapapp", version = "{libcrapapp_version}""#)
     };
-
-    #[cfg(not(feature = "dev"))]
-    let source = format!(r#"package = "cargo-crapapp", version = "{libcrapapp_version}""#);
 
     let feature = installer_kind.cargo_feature();
 
@@ -181,6 +182,7 @@ pub fn gen_installer_config(
         app_version: build_manifest.version.clone(),
         display_name: build_manifest.build.display_name.clone(),
         publisher: build_manifest.build.publisher.clone(),
+        bundled_at: build_manifest.bundled_at.clone(),
         required_variables: platform.variables.iter().map(ToString::to_string).collect(),
         uninstaller_source: uninstaller_source
             .map(|path| path.display().to_string())
@@ -314,6 +316,29 @@ fn build_bin(build_space: &Path, target: &str, bin: &str) -> anyhow::Result<()> 
     Ok(())
 }
 
+fn remove_file_if_exists(path: &Path) -> anyhow::Result<()> {
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error).with_context(|| format!("failed to remove {}", path.display())),
+    }
+}
+
+fn cleanup_generated_project(project_space: &Path) -> anyhow::Result<()> {
+    remove_file_if_exists(&project_space.join("../Cargo.toml"))?;
+    remove_file_if_exists(&project_space.join("../Cargo.lock"))?;
+    remove_file_if_exists(&project_space.join("main.rs"))?;
+    remove_file_if_exists(&project_space.join("uninstall.rs"))?;
+
+    let assets_dir = project_space.join("assets");
+    if assets_dir.exists() {
+        fs::remove_dir_all(&assets_dir)
+            .with_context(|| format!("failed to remove {}", assets_dir.display()))?;
+    }
+
+    Ok(())
+}
+
 pub struct WinBinaryBundler {}
 impl WinBinaryBundler {
     pub fn bundle(
@@ -321,7 +346,7 @@ impl WinBinaryBundler {
         build_dir: &Path,
         platform_manifest: &WindowsPlatformManifest<TargetManifest>,
         target_manifest: &TargetManifest,
-        inst_mode: &WindowsInstallerKind,
+        inst_mode: &WindowsBundlerKind,
     ) -> anyhow::Result<()> {
         let target = &target_manifest.target;
         if target_manifest.files.is_empty() {
@@ -385,11 +410,14 @@ impl WinBinaryBundler {
             target_dir.join(installer_bin),
             project_space.join(installer_bin),
         )?;
+
         if cargo_target_dir.exists() {
             fs::remove_dir_all(&cargo_target_dir)
                 .with_context(|| format!("failed to remove {}", cargo_target_dir.display()))?;
         }
         fs::remove_dir_all(builder_space)?;
+        cleanup_generated_project(&project_space)?;
+
         Ok(())
     }
 }

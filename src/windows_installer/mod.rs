@@ -17,6 +17,7 @@ pub mod gui;
 mod install;
 #[cfg(any(feature = "windows-cli", feature = "windows-gui"))]
 pub mod installer;
+mod msi;
 #[cfg(any(feature = "windows-cli", feature = "windows-gui"))]
 mod registry;
 #[cfg(any(feature = "windows-cli", feature = "windows-gui"))]
@@ -27,6 +28,8 @@ mod uninstall;
 pub mod uninstaller;
 #[cfg(feature = "windows")]
 pub mod win_api;
+pub mod win_binary_bundler;
+pub mod windows_msi_bundler;
 
 #[cfg(any(feature = "windows-cli", feature = "windows-gui"))]
 pub use config::{ADD_TO_PATH_VARIABLE, UNINSTALLER_EXE};

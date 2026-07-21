@@ -1,4 +1,4 @@
-use crate::bundlers::{LinuxInstallerKind, MacosInstallerKind, WindowsInstallerKind};
+use crate::bundlers::{LinuxBundlerKind, MacosBundlerKind, WindowsBundlerKind};
 use crate::platform_manifests::{LinuxPlatformManifest, MacosPkgConfig, WindowsPlatformManifest};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Deserializer, Serialize};
@@ -20,6 +20,7 @@ pub struct CrapManifest {
 pub struct BuildConfig {
     pub publisher: Option<String>,
     pub display_name: Option<String>,
+    pub description: Option<String>,
     #[serde(default)]
     pub packages: Vec<String>,
     #[serde(default)]
@@ -206,17 +207,17 @@ fn default_true() -> bool {
     true
 }
 
-pub(crate) fn deserialize_windows_bundles<'de, D>(
+pub fn deserialize_windows_bundles<'de, D>(
     deserializer: D,
-) -> Result<Vec<WindowsInstallerKind>, D::Error>
+) -> Result<Vec<WindowsBundlerKind>, D::Error>
 where
     D: Deserializer<'de>,
 {
     #[derive(Deserialize)]
     #[serde(untagged)]
     enum WindowsInstallerList {
-        One(WindowsInstallerKind),
-        Many(Vec<WindowsInstallerKind>),
+        One(WindowsBundlerKind),
+        Many(Vec<WindowsBundlerKind>),
     }
 
     Ok(
@@ -228,17 +229,15 @@ where
     )
 }
 
-pub(crate) fn deserialize_macos_bundles<'de, D>(
-    deserializer: D,
-) -> Result<Vec<MacosInstallerKind>, D::Error>
+pub fn deserialize_macos_bundles<'de, D>(deserializer: D) -> Result<Vec<MacosBundlerKind>, D::Error>
 where
     D: Deserializer<'de>,
 {
     #[derive(Deserialize)]
     #[serde(untagged)]
     enum MacosInstallerList {
-        One(MacosInstallerKind),
-        Many(Vec<MacosInstallerKind>),
+        One(MacosBundlerKind),
+        Many(Vec<MacosBundlerKind>),
     }
 
     Ok(
@@ -250,17 +249,15 @@ where
     )
 }
 
-pub(crate) fn deserialize_linux_bundles<'de, D>(
-    deserializer: D,
-) -> Result<Vec<LinuxInstallerKind>, D::Error>
+pub fn deserialize_linux_bundles<'de, D>(deserializer: D) -> Result<Vec<LinuxBundlerKind>, D::Error>
 where
     D: Deserializer<'de>,
 {
     #[derive(Deserialize)]
     #[serde(untagged)]
     enum LinuxInstallerList {
-        One(LinuxInstallerKind),
-        Many(Vec<LinuxInstallerKind>),
+        One(LinuxBundlerKind),
+        Many(Vec<LinuxBundlerKind>),
     }
 
     Ok(
@@ -275,7 +272,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::CrapManifest;
-    use crate::bundlers::{LinuxInstallerKind, MacosInstallerKind, WindowsInstallerKind};
+    use crate::bundlers::{LinuxBundlerKind, MacosBundlerKind, WindowsBundlerKind};
 
     fn parse_manifest(source: &str) -> CrapManifest {
         toml::from_str(source).expect("manifest should parse")
@@ -291,7 +288,7 @@ mod tests {
         );
 
         let windows = manifest.windows.expect("windows platform should exist");
-        assert_eq!(windows.bundles(), vec![WindowsInstallerKind::Cli]);
+        assert_eq!(windows.bundles(), vec![WindowsBundlerKind::Cli]);
     }
 
     #[test]
@@ -305,7 +302,7 @@ mod tests {
         );
 
         let windows = manifest.windows.expect("windows platform should exist");
-        assert_eq!(windows.bundles(), vec![WindowsInstallerKind::Gui]);
+        assert_eq!(windows.bundles(), vec![WindowsBundlerKind::Gui]);
     }
 
     #[test]
@@ -321,7 +318,7 @@ mod tests {
         let windows = manifest.windows.expect("windows platform should exist");
         assert_eq!(
             windows.bundles(),
-            vec![WindowsInstallerKind::Cli, WindowsInstallerKind::Gui]
+            vec![WindowsBundlerKind::Cli, WindowsBundlerKind::Gui]
         );
     }
 
@@ -338,7 +335,7 @@ mod tests {
         let windows = manifest.windows.expect("windows platform should exist");
         assert_eq!(
             windows.bundles(),
-            vec![WindowsInstallerKind::Gui, WindowsInstallerKind::Cli]
+            vec![WindowsBundlerKind::Gui, WindowsBundlerKind::Cli]
         );
     }
 
@@ -396,7 +393,7 @@ mod tests {
         );
 
         let macos = manifest.macos.expect("macos platform should exist");
-        assert_eq!(macos.bundles(), vec![MacosInstallerKind::App]);
+        assert_eq!(macos.bundles(), vec![MacosBundlerKind::App]);
     }
 
     #[test]
@@ -410,7 +407,7 @@ mod tests {
         );
 
         let macos = manifest.macos.expect("macos platform should exist");
-        assert_eq!(macos.bundles(), vec![MacosInstallerKind::App]);
+        assert_eq!(macos.bundles(), vec![MacosBundlerKind::App]);
     }
 
     #[test]
@@ -426,7 +423,7 @@ mod tests {
         let macos = manifest.macos.expect("macos platform should exist");
         assert_eq!(
             macos.bundles(),
-            vec![MacosInstallerKind::App, MacosInstallerKind::Pkg]
+            vec![MacosBundlerKind::App, MacosBundlerKind::Pkg]
         );
     }
 
@@ -487,9 +484,9 @@ mod tests {
         assert_eq!(
             linux.bundles(),
             vec![
-                LinuxInstallerKind::Deb,
-                LinuxInstallerKind::Rpm,
-                LinuxInstallerKind::Aur
+                LinuxBundlerKind::Deb,
+                LinuxBundlerKind::Rpm,
+                LinuxBundlerKind::Aur
             ]
         );
         assert_eq!(linux.install_path.as_deref(), Some("/opt/example"));
@@ -509,7 +506,7 @@ pub struct MacosPlatform {
         default,
         deserialize_with = "crate::manifest_file::deserialize_macos_bundles"
     )]
-    pub bundle: Vec<MacosInstallerKind>,
+    pub bundle: Vec<MacosBundlerKind>,
     #[serde(default)]
     pub files: Vec<FileMapping>,
     pub display_icon: Option<String>,
@@ -521,9 +518,9 @@ pub struct MacosPlatform {
 }
 
 impl MacosPlatform {
-    pub fn bundles(&self) -> Vec<MacosInstallerKind> {
+    pub fn bundles(&self) -> Vec<MacosBundlerKind> {
         let bundles = if self.bundle.is_empty() {
-            vec![MacosInstallerKind::App]
+            vec![MacosBundlerKind::App]
         } else {
             self.bundle.clone()
         };
@@ -622,6 +619,10 @@ pub enum LinuxTarget {
     X86_64UnknownLinuxGnu,
     #[serde(rename = "x86_64-unknown-linux-musl")]
     X86_64UnknownLinuxMusl,
+    #[serde(rename = "aarch64-unknown-linux-gnu")]
+    Aarch64UnknownLinuxGnu,
+    #[serde(rename = "aarch64-unknown-linux-musl")]
+    Aarch64UnknownLinuxMusl,
 }
 
 impl LinuxTarget {
@@ -629,6 +630,8 @@ impl LinuxTarget {
         match self {
             LinuxTarget::X86_64UnknownLinuxGnu => "x86_64-unknown-linux-gnu",
             LinuxTarget::X86_64UnknownLinuxMusl => "x86_64-unknown-linux-musl",
+            LinuxTarget::Aarch64UnknownLinuxGnu => "aarch64-unknown-linux-gnu",
+            LinuxTarget::Aarch64UnknownLinuxMusl => "aarch64-unknown-linux-musl",
         }
     }
 }

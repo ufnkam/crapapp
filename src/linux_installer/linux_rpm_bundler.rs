@@ -4,21 +4,21 @@ use std::path::Path;
 use anyhow::Context;
 
 use crate::build_manifest::BuildManifest;
-use crate::bundlers::LinuxInstallerKind;
-use crate::linux_aur::{self, AurSpec};
-use crate::linux_package::{aur_architecture, package_name};
+use crate::bundlers::LinuxBundlerKind;
+use crate::linux_installer::rpm::{self, RpmSpec};
+use crate::package_metadata::{description, package_name};
 use crate::platform_manifests::LinuxPlatformManifest;
 use crate::target_manifest::TargetManifest;
 
-pub struct LinuxAurBundler {}
+pub struct LinuxRpmBundler {}
 
-impl LinuxAurBundler {
+impl LinuxRpmBundler {
     pub fn bundle(
         build_manifest: &BuildManifest,
         build_dir: &Path,
         platform_manifest: &LinuxPlatformManifest<TargetManifest>,
         target_manifest: &TargetManifest,
-        bundle: &LinuxInstallerKind,
+        bundle: &LinuxBundlerKind,
     ) -> anyhow::Result<()> {
         let target_dir = build_dir
             .join(&platform_manifest.platform)
@@ -33,22 +33,28 @@ impl LinuxAurBundler {
             .with_context(|| format!("failed to create {}", target_dir.display()))?;
 
         let package = package_name(&build_manifest.app_name);
-        let output = target_dir.join(format!("{package}.src.tar.gz"));
-        let spec = AurSpec {
+        let output = target_dir.join(format!("{package}-{}-1.rpm", build_manifest.version));
+        let description = description(build_manifest);
+        let architecture = if target_manifest.target.starts_with("aarch64-") {
+            "aarch64"
+        } else {
+            "x86_64"
+        };
+        let spec = RpmSpec {
             package,
             version: build_manifest.version.clone(),
-            description: build_manifest
-                .build
-                .display_name
-                .clone()
-                .unwrap_or_else(|| build_manifest.app_name.clone()),
-            architecture: aur_architecture(&target_manifest.target)?.to_owned(),
+            release: "1".to_owned(),
+            bundled_at: build_manifest.bundled_at.clone(),
+            summary: description.clone(),
+            description,
+            architecture: architecture.to_owned(),
+            license: "custom".to_owned(),
             files: target_manifest.files.clone(),
             associated_files: platform_manifest.associated_files.clone(),
             eulas: platform_manifest.eulas.clone(),
         };
 
-        linux_aur::build(&spec, &output)
+        rpm::build(&spec, &output)
             .with_context(|| format!("failed to write {}", output.display()))?;
 
         Ok(())

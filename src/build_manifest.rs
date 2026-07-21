@@ -1,4 +1,5 @@
 use anyhow::{Context, Result, bail};
+use chrono::SecondsFormat;
 use serde::Serialize;
 
 use crate::build_config_manifest::BuildConfigManifest;
@@ -18,6 +19,7 @@ use std::path::Path;
 pub struct BuildManifest {
     pub app_name: String,
     pub version: String,
+    pub bundled_at: String,
     pub build: BuildConfigManifest,
     pub platforms: Vec<PlatformBuildManifest>,
 }
@@ -107,7 +109,8 @@ impl BuildManifest {
         Ok(Self {
             app_name: cargo_package.name,
             version: cargo_package.version,
-            build: BuildConfigManifest::from_crap_manifest(manifest),
+            bundled_at: chrono::Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true),
+            build: BuildConfigManifest::from_crap_manifest(manifest, cargo_package.description),
             platforms,
         })
     }
@@ -148,6 +151,7 @@ impl BuildManifest {
 
         output.push_str(&format!("app: {}\n", self.app_name));
         output.push_str(&format!("version: {}\n", self.version));
+        output.push_str(&format!("bundled at: {}\n", self.bundled_at));
 
         if let Some(publisher) = &self.build.publisher {
             output.push_str(&format!("publisher: {publisher}\n"));
@@ -155,6 +159,10 @@ impl BuildManifest {
 
         if let Some(display_name) = &self.build.display_name {
             output.push_str(&format!("display name: {display_name}\n"));
+        }
+
+        if let Some(description) = &self.build.description {
+            output.push_str(&format!("description: {description}\n"));
         }
 
         if !self.build.packages.is_empty() {

@@ -3,6 +3,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, bail};
+use chrono::{DateTime, TimeZone, Utc};
 use flate2::Compression;
 use flate2::write::GzEncoder;
 use sha1::{Digest, Sha1};
@@ -10,11 +11,10 @@ use sha1::{Digest, Sha1};
 use crate::manifest_file::{AssociatedFile, AssociatedFileKind, EulaFile};
 use crate::payload_file::PayloadFile;
 
-const TAR_TIMESTAMP: u64 = 946_684_800;
-
 pub struct AurSpec {
     pub package: String,
     pub version: String,
+    pub bundled_at: String,
     pub description: String,
     pub architecture: String,
     pub files: Vec<PayloadFile>,
@@ -47,6 +47,7 @@ fn validate(spec: &AurSpec) -> anyhow::Result<()> {
 fn source_archive(spec: &AurSpec) -> anyhow::Result<Vec<u8>> {
     let root = format!("{}-{}", spec.package, spec.version);
     let mut tar = Vec::new();
+    let timestamp = package_timestamp(&spec.bundled_at);
     let entries = source_entries(spec)?;
     let pkgbuild = pkgbuild(spec, &entries)?;
     write_tar_file(
@@ -54,6 +55,7 @@ fn source_archive(spec: &AurSpec) -> anyhow::Result<Vec<u8>> {
         &format!("{root}/PKGBUILD"),
         pkgbuild.as_bytes(),
         0o644,
+        timestamp,
     )?;
 
     for entry in entries {
@@ -64,6 +66,7 @@ fn source_archive(spec: &AurSpec) -> anyhow::Result<Vec<u8>> {
             &format!("{root}/{}", entry.archive_path),
             &bytes,
             entry.mode,
+            timestamp,
         )?;
     }
 
@@ -84,7 +87,7 @@ fn source_entries(spec: &AurSpec) -> anyhow::Result<Vec<SourceEntry>> {
     for (index, file) in spec.files.iter().enumerate() {
         entries.push(SourceEntry {
             source: PathBuf::from(&file.source),
-            archive_path: format!("payload/{index}-{}", source_file_name(&file.source)?),
+            archive_path: format!("payload-{index}-{}", source_file_name(&file.source)?),
             install_path: package_path(&file.destination)?,
             mode: if file.executable { 0o755 } else { 0o644 },
         });
@@ -93,7 +96,7 @@ fn source_entries(spec: &AurSpec) -> anyhow::Result<Vec<SourceEntry>> {
     for eula in &spec.eulas {
         let source = PathBuf::from(eula.path());
         entries.push(SourceEntry {
-            archive_path: format!("licenses/{}", source_file_name(eula.path())?),
+            archive_path: format!("license-{}", source_file_name(eula.path())?),
             install_path: format!(
                 "usr/share/licenses/{}/{}",
                 spec.package,
@@ -124,6 +127,7 @@ fn pkgbuild(spec: &AurSpec, entries: &[SourceEntry]) -> anyhow::Result<String> {
         .join(" ");
 
     let mut package = String::new();
+    package.push_str(&format!("# Bundled-At: {}\n", spec.bundled_at));
     package.push_str(&format!("pkgname={}\n", spec.package));
     package.push_str(&format!("pkgver={}\n", pkgver(&spec.version)));
     package.push_str("pkgrel=1\n");
@@ -215,8 +219,25 @@ fn gzip(bytes: &[u8]) -> anyhow::Result<Vec<u8>> {
     Ok(encoder.finish()?)
 }
 
-fn write_tar_file(output: &mut Vec<u8>, path: &str, bytes: &[u8], mode: u32) -> anyhow::Result<()> {
-    write_tar_header(output, path, mode, bytes.len() as u64)?;
+fn package_timestamp(value: &str) -> u64 {
+    DateTime::parse_from_rfc3339(value)
+        .map(|value| value.with_timezone(&Utc).timestamp().max(0) as u64)
+        .unwrap_or_else(|_| {
+            Utc.with_ymd_and_hms(2000, 1, 1, 0, 0, 0)
+                .single()
+                .expect("fixed source date must be valid")
+                .timestamp() as u64
+        })
+}
+
+fn write_tar_file(
+    output: &mut Vec<u8>,
+    path: &str,
+    bytes: &[u8],
+    mode: u32,
+    timestamp: u64,
+) -> anyhow::Result<()> {
+    write_tar_header(output, path, mode, bytes.len() as u64, timestamp)?;
     output.extend_from_slice(bytes);
     while !output.len().is_multiple_of(512) {
         output.push(0);
@@ -224,7 +245,13 @@ fn write_tar_file(output: &mut Vec<u8>, path: &str, bytes: &[u8], mode: u32) -> 
     Ok(())
 }
 
-fn write_tar_header(output: &mut Vec<u8>, path: &str, mode: u32, size: u64) -> anyhow::Result<()> {
+fn write_tar_header(
+    output: &mut Vec<u8>,
+    path: &str,
+    mode: u32,
+    size: u64,
+    timestamp: u64,
+) -> anyhow::Result<()> {
     if path.len() > 100 {
         bail!("tar path {path} is too long");
     }
@@ -235,7 +262,7 @@ fn write_tar_header(output: &mut Vec<u8>, path: &str, mode: u32, size: u64) -> a
     write_tar_octal(&mut header[108..116], 0)?;
     write_tar_octal(&mut header[116..124], 0)?;
     write_tar_octal(&mut header[124..136], size)?;
-    write_tar_octal(&mut header[136..148], TAR_TIMESTAMP)?;
+    write_tar_octal(&mut header[136..148], timestamp)?;
     for byte in &mut header[148..156] {
         *byte = b' ';
     }
@@ -293,7 +320,7 @@ mod tests {
     fn aur_source_package_contains_pkgbuild() {
         let temp_dir =
             std::env::temp_dir().join(format!("cargo-crapapp-aur-{}", std::process::id()));
-        let source = temp_dir.join("example");
+        let source = temp_dir.join("../../example");
         let output = temp_dir.join("example.src.tar.gz");
 
         let _ = fs::remove_dir_all(&temp_dir);
@@ -304,6 +331,7 @@ mod tests {
             &AurSpec {
                 package: "example".to_owned(),
                 version: "1.0.0".to_owned(),
+                bundled_at: "2000-01-01T00:00:00Z".to_owned(),
                 description: "Example".to_owned(),
                 architecture: "x86_64".to_owned(),
                 files: vec![PayloadFile::executable(

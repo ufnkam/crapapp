@@ -1,21 +1,12 @@
-mod linux_aur_bundler;
+mod bundler_kinds;
 mod linux_bundler;
-mod linux_deb_bundler;
-mod linux_installer;
-mod linux_rpm_bundler;
-mod macos_app_bundler;
 mod macos_bundler;
-mod macos_installer;
-mod macos_pkg_bundler;
-pub(crate) mod shared;
-mod win_binary_bundler;
+pub mod shared;
 mod windows_bundler;
-mod windows_installer;
-mod windows_msi_bundler;
 
+pub use bundler_kinds::LinuxBundlerKind;
+pub use bundler_kinds::MacosBundlerKind;
+pub use bundler_kinds::WindowsBundlerKind;
 pub use linux_bundler::LinuxBundler;
-pub use linux_installer::LinuxInstallerKind;
 pub use macos_bundler::MacosBundler;
-pub use macos_installer::MacosInstallerKind;
 pub use windows_bundler::WindowsBundler;
-pub use windows_installer::WindowsInstallerKind;

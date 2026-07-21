@@ -128,10 +128,12 @@ fn validate_target_build_environment(target: &str) -> Result<()> {
     }
 
     bail!(
-        "cannot build target {target} from macOS without a Linux GNU linker and sysroot; \
-         install x86_64-unknown-linux-gnu-gcc, configure {linker_env} or RUSTFLAGS for a Linux \
+        "cannot build target {target} from macOS with only the Rust target installed; \
+         a Linux GNU linker and sysroot are also required. \
+         install {}, configure {linker_env} or RUSTFLAGS for a Linux \
          toolchain, run on Linux, or build the target binaries elsewhere and use cargo crapapp \
-         bundle --no-build"
+         bundle --no-build",
+        linux_gnu_linker_hint(target)
     );
 }
 
@@ -166,16 +168,33 @@ struct LinuxGnuToolchain {
 }
 
 fn linux_gnu_toolchain(target: &str) -> Option<LinuxGnuToolchain> {
-    if !cfg!(target_os = "macos") || target != "x86_64-unknown-linux-gnu" {
+    if !cfg!(target_os = "macos") {
         return None;
     }
 
-    let cc = find_executable("x86_64-unknown-linux-gnu-gcc")
-        .or_else(|| find_executable("x86_64-linux-gnu-gcc"))?;
-    let ar = find_executable("x86_64-unknown-linux-gnu-ar")
-        .or_else(|| find_executable("x86_64-linux-gnu-ar"));
+    let (cc_names, ar_names): (&[&str], &[&str]) = match target {
+        "x86_64-unknown-linux-gnu" => (
+            &["x86_64-unknown-linux-gnu-gcc", "x86_64-linux-gnu-gcc"],
+            &["x86_64-unknown-linux-gnu-ar", "x86_64-linux-gnu-ar"],
+        ),
+        "aarch64-unknown-linux-gnu" => (
+            &["aarch64-unknown-linux-gnu-gcc", "aarch64-linux-gnu-gcc"],
+            &["aarch64-unknown-linux-gnu-ar", "aarch64-linux-gnu-ar"],
+        ),
+        _ => return None,
+    };
+
+    let cc = cc_names.iter().find_map(|name| find_executable(name))?;
+    let ar = ar_names.iter().find_map(|name| find_executable(name));
 
     Some(LinuxGnuToolchain { cc, ar })
+}
+
+fn linux_gnu_linker_hint(target: &str) -> &'static str {
+    match target {
+        "aarch64-unknown-linux-gnu" => "aarch64-unknown-linux-gnu-gcc",
+        _ => "x86_64-unknown-linux-gnu-gcc",
+    }
 }
 
 fn cargo_target_env_key(target: &str, suffix: &str) -> String {

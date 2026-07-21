@@ -79,6 +79,7 @@ should behave.
 [build]
 publisher = "Acme"
 display_name = "Acme Launcher"
+description = "Desktop launcher for Acme tools"
 packages = ["acme-launcher"]
 features = ["sqlite"]
 
@@ -157,6 +158,9 @@ Fields:
 - `display_name`: optional string. User-facing app name. If omitted, the Cargo
   package name is used. macOS app/pkg names and installer UI labels use this
   value when present.
+- `description`: optional string. Package description used by Linux package
+  metadata. If omitted, the Cargo package description is used, then
+  `display_name`, then the Cargo package name.
 - `packages`: optional array of strings. Each entry is passed to Cargo as a
   selected package. If missing or empty, cargo-crapapp does not pass package
   selection flags.
@@ -277,15 +281,14 @@ setup.exe --args INSTALLPATH=C:\Users\me\AppData\Local\Acme --args ADD_TO_PATH=0
 
 ### `[macos]`
 
-`[macos]` configures `.app`, `.pkg`, and eventually `.dmg` output.
+`[macos]` configures `.app`, `.pkg`, and `.dmg` output.
 
 Fields:
 
 - `targets`: optional array of target triples. Supported values are
   `x86_64-apple-darwin` and `aarch64-apple-darwin`.
 - `bundle`: optional string or array. Defaults to `app`. Values are `app`,
-  `pkg`, and `dmg`. `app` and `pkg` are implemented; `dmg` is parsed but not
-  implemented yet.
+  `pkg`, and `dmg`.
 - `display_icon`: optional icon path. The source is copied into
   `Contents/Resources`. When the source is `.icns`, `Info.plist` also sets
   `CFBundleIconFile`.
@@ -327,8 +330,9 @@ The pkg writer is implemented in Rust and does not call `pkgbuild`,
 
 Fields:
 
-- `targets`: optional array of target triples. Supported value is
-  `x86_64-unknown-linux-gnu`.
+- `targets`: optional array of target triples. Supported values are
+  `x86_64-unknown-linux-gnu`, `x86_64-unknown-linux-musl`,
+  `aarch64-unknown-linux-gnu`, and `aarch64-unknown-linux-musl`.
 - `bundle`: optional string or array. Defaults to `deb`. Values are `deb`,
   `rpm`, and `aur`.
 - `install_path`: optional string. If present, relative binary and payload
@@ -348,12 +352,13 @@ Fields:
 The deb, rpm, and AUR writers are implemented in Rust and do not call
 `dpkg-deb`, `rpmbuild`, or `makepkg`.
 
-Building `x86_64-unknown-linux-gnu` from macOS requires a Linux GNU linker and
+Building Linux GNU targets from macOS requires a matching Linux GNU linker and
 sysroot. The Rust target alone is not enough, because glibc targets still link
-against Linux system libraries such as `libc`, `libpthread`, and `libdl`. If
-those tools are not configured, build the Linux binaries on Linux and run
-`cargo crapapp bundle --no-build`, or configure Cargo with an appropriate Linux
-toolchain.
+against Linux system libraries such as `libc`, `libpthread`, and `libdl`. For
+example, `aarch64-unknown-linux-gnu` needs `aarch64-unknown-linux-gnu-gcc` or a
+Cargo/Rust configuration that points at an equivalent Linux toolchain. If those
+tools are not configured, build the Linux binaries on Linux and run
+`cargo crapapp bundle --no-build`.
 
 # libcrapapp
 

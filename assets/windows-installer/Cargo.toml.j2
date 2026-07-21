@@ -2,6 +2,7 @@
 name = "windows-installer-setup"
 version = "0.1.0"
 edition = "2024"
+build = "{{ installer_dir }}/builder/build.rs"
 
 [dependencies]
 libcrapapp = {{ libcrapapp_dependency }}
@@ -14,11 +15,11 @@ winresource = "0.1.23"
 
 [[bin]]
 name = "setup"
-path = "src/main.rs"
+path = "{{ installer_dir }}/main.rs"
 
 [[bin]]
 name = "uninstall"
-path = "src/uninstall.rs"
+path = "{{ installer_dir }}/uninstall.rs"
 
 [workspace]
 resolver = "3"

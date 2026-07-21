@@ -1,11 +1,10 @@
-use serde::{Deserialize, Serialize};
-
-use crate::bundlers::LinuxInstallerKind;
+use crate::bundlers::LinuxBundlerKind;
 use crate::manifest_file::{
     AssociatedFile, EulaFile, FileMapping, LinuxTarget, PlatformManifest as SourcePlatformManifest,
 };
 use crate::platform_manifest::PlatformManifest;
 use crate::target_manifest::TargetManifest;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -22,7 +21,7 @@ pub struct LinuxPlatformManifest<Target = LinuxTarget> {
         default,
         deserialize_with = "crate::manifest_file::deserialize_linux_bundles"
     )]
-    pub bundle: Vec<LinuxInstallerKind>,
+    pub bundle: Vec<LinuxBundlerKind>,
     pub install_path: Option<String>,
     pub bin_dir: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -35,9 +34,9 @@ pub struct LinuxPlatformManifest<Target = LinuxTarget> {
 }
 
 impl<Target> LinuxPlatformManifest<Target> {
-    pub fn bundles(&self) -> Vec<LinuxInstallerKind> {
+    pub fn bundles(&self) -> Vec<LinuxBundlerKind> {
         let bundles = if self.bundle.is_empty() {
-            vec![LinuxInstallerKind::Deb]
+            vec![LinuxBundlerKind::Deb]
         } else {
             self.bundle.clone()
         };

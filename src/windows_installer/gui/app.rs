@@ -106,7 +106,11 @@ impl Installer {
         let installed = config
             .installer_config()
             .as_ref()
-            .is_some_and(crate::windows_installer::registry::registry_install_exists);
+            .and_then(|installer_config| {
+                let variables = process_screen::variables(installer_config, &settings);
+                crate::windows_installer::install::install_plan(installer_config, &variables).ok()
+            })
+            .is_some_and(|plan| plan.existing.registry_exists);
         let process = if installed {
             Process::Reinstallation
         } else {

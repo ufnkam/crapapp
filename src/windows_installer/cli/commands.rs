@@ -132,7 +132,7 @@ pub fn uninstall(config: &InstallerConfig) -> Result<(), String> {
     remove_created_directories(config, &install_root);
     remove_start_menu_shortcuts(config);
     println!("Removing registry keys");
-    remove_registry_key(config);
+    remove_registry_key(config, &install_root);
 
     println!("Updated user PATH.");
     println!("Uninstalled {}", config.app_name);

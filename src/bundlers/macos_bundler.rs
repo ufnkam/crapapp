@@ -1,11 +1,10 @@
 use std::path::Path;
 
-use anyhow::bail;
-
 use crate::build_manifest::BuildManifest;
-use crate::bundlers::MacosInstallerKind;
-use crate::bundlers::macos_app_bundler::MacosAppBundler;
-use crate::bundlers::macos_pkg_bundler::MacosPkgBundler;
+use crate::bundlers::bundler_kinds::MacosBundlerKind;
+use crate::macos_installer::app_bundler::MacosAppBundler;
+use crate::macos_installer::dmg_bundler::MacosDmgBundler;
+use crate::macos_installer::pkg_bundler::MacosPkgBundler;
 use crate::platform_manifests::MacosPlatformManifest;
 
 pub struct MacosBundler<'a> {
@@ -31,7 +30,7 @@ impl<'a> MacosBundler<'a> {
         for target in &self.platform.targets {
             for bundle in &self.platform.bundle {
                 match bundle {
-                    MacosInstallerKind::App => {
+                    MacosBundlerKind::App => {
                         MacosAppBundler::bundle(
                             self.build_manifest,
                             self.build_dir,
@@ -40,7 +39,7 @@ impl<'a> MacosBundler<'a> {
                             bundle,
                         )?;
                     }
-                    MacosInstallerKind::Pkg => {
+                    MacosBundlerKind::Pkg => {
                         MacosPkgBundler::bundle(
                             self.build_manifest,
                             self.build_dir,
@@ -49,8 +48,14 @@ impl<'a> MacosBundler<'a> {
                             bundle,
                         )?;
                     }
-                    MacosInstallerKind::Dmg => {
-                        bail!("dmg bundle support is not implemented yet");
+                    MacosBundlerKind::Dmg => {
+                        MacosDmgBundler::bundle(
+                            self.build_manifest,
+                            self.build_dir,
+                            self.platform,
+                            target,
+                            bundle,
+                        )?;
                     }
                 }
             }

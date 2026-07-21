@@ -4,10 +4,10 @@ use std::path::Path;
 use anyhow::Context;
 
 use crate::build_manifest::BuildManifest;
-use crate::bundlers::WindowsInstallerKind;
+use crate::bundlers::WindowsBundlerKind;
 use crate::platform_manifests::WindowsPlatformManifest;
 use crate::target_manifest::TargetManifest;
-use crate::windows_msi::{self, MsiSpec};
+use crate::windows_installer::msi::{self, MsiSpec};
 
 pub struct WindowsMsiBundler {}
 
@@ -17,7 +17,7 @@ impl WindowsMsiBundler {
         build_dir: &Path,
         platform_manifest: &WindowsPlatformManifest<TargetManifest>,
         target_manifest: &TargetManifest,
-        bundle: &WindowsInstallerKind,
+        bundle: &WindowsBundlerKind,
     ) -> anyhow::Result<()> {
         let target_dir = build_dir
             .join(&platform_manifest.platform)
@@ -52,7 +52,7 @@ impl WindowsMsiBundler {
             display_icon_source: platform_manifest.display_icon_source.clone(),
         };
 
-        windows_msi::build(&spec, &output)
+        msi::build(&spec, &output)
             .with_context(|| format!("failed to write {}", output.display()))?;
 
         Ok(())

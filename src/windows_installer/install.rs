@@ -165,7 +165,7 @@ fn install_root(
 fn existing_install(config: &InstallerConfig, install_root: &Path) -> ExistingInstall {
     ExistingInstall {
         path_exists: install_root.exists(),
-        registry_exists: registry_install_exists(config),
+        registry_exists: registry_install_exists(config, install_root),
     }
 }
 
@@ -249,6 +249,7 @@ pub fn write_eula_reports(
         "app_name": config.app_name,
         "app_version": config.app_version,
         "display_name": config.display_name,
+        "bundled_at": config.bundled_at,
         "eulas": eulas,
     });
     let report = serde_json::to_vec_pretty(&report)
@@ -293,7 +294,7 @@ pub fn registry_entries(
 ) -> Vec<RegistryEntry> {
     let install_location = install_root.display().to_string();
     let uninstall_string = format!("\"{}\"", uninstaller_path.display());
-    let key = crate::windows_installer::registry::uninstall_registry_key(config);
+    let key = crate::windows_installer::registry::uninstall_registry_key(config, install_root);
 
     let mut entries = vec![
         RegistryEntry {

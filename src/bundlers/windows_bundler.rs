@@ -1,10 +1,10 @@
 use std::path::Path;
 
-use crate::bundlers::win_binary_bundler::WinBinaryBundler;
-use crate::bundlers::windows_msi_bundler::WindowsMsiBundler;
 use crate::platform_manifests::WindowsPlatformManifest;
 use crate::target_manifest::TargetManifest;
-use crate::{build_manifest::BuildManifest, bundlers::windows_installer::WindowsInstallerKind};
+use crate::windows_installer::win_binary_bundler::WinBinaryBundler;
+use crate::windows_installer::windows_msi_bundler::WindowsMsiBundler;
+use crate::{build_manifest::BuildManifest, bundlers::bundler_kinds::WindowsBundlerKind};
 
 pub struct WindowsBundler<'a> {
     build_manifest: &'a BuildManifest,
@@ -29,7 +29,7 @@ impl<'a> WindowsBundler<'a> {
         for target in &self.platform.targets {
             for bundle in &self.platform.bundle {
                 match bundle {
-                    WindowsInstallerKind::Cli | WindowsInstallerKind::Gui => {
+                    WindowsBundlerKind::Cli | WindowsBundlerKind::Gui => {
                         WinBinaryBundler::bundle(
                             self.build_manifest,
                             self.build_dir,
@@ -38,7 +38,7 @@ impl<'a> WindowsBundler<'a> {
                             bundle,
                         )?;
                     }
-                    WindowsInstallerKind::Msi => {
+                    WindowsBundlerKind::Msi => {
                         WindowsMsiBundler::bundle(
                             self.build_manifest,
                             self.build_dir,

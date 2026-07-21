@@ -1,10 +1,10 @@
 use std::path::Path;
 
 use crate::build_manifest::BuildManifest;
-use crate::bundlers::LinuxInstallerKind;
-use crate::bundlers::linux_aur_bundler::LinuxAurBundler;
-use crate::bundlers::linux_deb_bundler::LinuxDebBundler;
-use crate::bundlers::linux_rpm_bundler::LinuxRpmBundler;
+use crate::bundlers::bundler_kinds::LinuxBundlerKind;
+use crate::linux_installer::linux_aur_bundler::LinuxAurBundler;
+use crate::linux_installer::linux_deb_bundler::LinuxDebBundler;
+use crate::linux_installer::linux_rpm_bundler::LinuxRpmBundler;
 use crate::platform_manifests::LinuxPlatformManifest;
 use crate::target_manifest::TargetManifest;
 
@@ -31,31 +31,31 @@ impl<'a> LinuxBundler<'a> {
         for target in &self.platform.targets {
             for bundle in &self.platform.bundle {
                 match bundle {
-                    LinuxInstallerKind::Deb => {
+                    LinuxBundlerKind::Deb => {
                         LinuxDebBundler::bundle(
                             self.build_manifest,
                             self.build_dir,
                             self.platform,
                             target,
-                            bundle,
+                            &bundle,
                         )?;
                     }
-                    LinuxInstallerKind::Rpm => {
+                    LinuxBundlerKind::Rpm => {
                         LinuxRpmBundler::bundle(
                             self.build_manifest,
                             self.build_dir,
                             self.platform,
                             target,
-                            bundle,
+                            &bundle,
                         )?;
                     }
-                    LinuxInstallerKind::Aur => {
+                    LinuxBundlerKind::Aur => {
                         LinuxAurBundler::bundle(
                             self.build_manifest,
                             self.build_dir,
                             self.platform,
                             target,
-                            bundle,
+                            &bundle,
                         )?;
                     }
                 }

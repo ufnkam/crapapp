@@ -1,16 +1,15 @@
-use crate::bundlers::MacosInstallerKind;
-use serde::{Deserialize, Serialize};
-
+use crate::bundlers::MacosBundlerKind;
 use crate::manifest_file::EulaFile;
 use crate::platform_manifest::PlatformManifest;
 use crate::target_manifest::TargetManifest;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct MacosPlatformManifest<Target = TargetManifest> {
     pub platform: String,
     pub targets: Vec<Target>,
-    pub bundle: Vec<MacosInstallerKind>,
+    pub bundle: Vec<MacosBundlerKind>,
     pub pkg: MacosPkgConfig,
     pub eulas: Vec<EulaFile>,
     pub display_icon: Option<String>,
@@ -25,7 +24,7 @@ impl MacosPlatformManifest<TargetManifest> {
         display_icon: Option<&str>,
         display_icon_source: Option<&str>,
         app_binary: Option<&str>,
-        bundle: Vec<MacosInstallerKind>,
+        bundle: Vec<MacosBundlerKind>,
         pkg: MacosPkgConfig,
         eulas: Vec<EulaFile>,
     ) -> Self {

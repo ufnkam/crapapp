@@ -4,10 +4,10 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, bail};
 
 use crate::build_manifest::BuildManifest;
-use crate::bundlers::MacosInstallerKind;
-use crate::bundlers::macos_app_bundler::{MacosAppBundler, bundle_identifier, bundle_name};
-use crate::bundlers::shared;
-use crate::macos_pkg::{self, FileSpec, PkgSpec};
+use crate::bundlers::{MacosBundlerKind, shared};
+use crate::macos_installer::app_bundler::{MacosAppBundler, bundle_identifier, bundle_name};
+use crate::macos_installer::pkg;
+use crate::macos_installer::pkg::{FileSpec, PkgSpec};
 use crate::manifest_file::EulaFile;
 use crate::payload_file::PayloadFile;
 use crate::platform_manifests::{MacosPkgConfig, MacosPlatformManifest};
@@ -24,7 +24,7 @@ impl MacosPkgBundler {
         build_dir: &Path,
         platform_manifest: &MacosPlatformManifest,
         target_manifest: &TargetManifest,
-        bundle: &MacosInstallerKind,
+        bundle: &MacosBundlerKind,
     ) -> anyhow::Result<()> {
         let target_dir = build_dir
             .join(&platform_manifest.platform)
@@ -78,7 +78,7 @@ impl MacosPkgBundler {
             &stage_dir,
         )?;
 
-        macos_pkg::build(&spec, &pkg_path)
+        pkg::build(&spec, &pkg_path)
             .with_context(|| format!("failed to write {}", pkg_path.display()))?;
         fs::remove_dir_all(&stage_dir)
             .with_context(|| format!("failed to remove {}", stage_dir.display()))?;
@@ -107,6 +107,7 @@ fn pkg_spec(
             .clone()
             .unwrap_or_else(|| bundle_identifier(build_manifest)),
         version: build_manifest.version.clone(),
+        bundled_at: build_manifest.bundled_at.clone(),
         install_path: install_path.to_owned(),
         license: pkg_license(eulas)?,
         files: package_files(stage_dir)?,
@@ -323,7 +324,7 @@ mod tests {
     use super::{MacosPkgBundler, package_files, slash_path, write_bin_shims};
     use crate::build_config_manifest::BuildConfigManifest;
     use crate::build_manifest::BuildManifest;
-    use crate::bundlers::MacosInstallerKind;
+    use crate::bundlers::MacosBundlerKind;
     use crate::manifest_file::EulaFile;
     use crate::payload_file::PayloadFile;
     use crate::platform_manifests::{MacosPkgConfig, MacosPlatformManifest};
@@ -423,7 +424,7 @@ mod tests {
         let temp_dir =
             std::env::temp_dir().join(format!("cargo-crapapp-pkg-bundle-{}", std::process::id()));
         let source_dir = temp_dir.join("source");
-        let executable = source_dir.join("example");
+        let executable = source_dir.join("../../example");
         let eula = source_dir.join("EULA.txt");
 
         let _ = fs::remove_dir_all(&temp_dir);
@@ -434,9 +435,11 @@ mod tests {
         let build_manifest = BuildManifest {
             app_name: "example".to_owned(),
             version: "1.0.0".to_owned(),
+            bundled_at: "2000-01-01T00:00:00Z".to_owned(),
             build: BuildConfigManifest {
                 publisher: Some("ufnkam".to_owned()),
                 display_name: Some("Example App".to_owned()),
+                description: None,
                 packages: Vec::new(),
                 features: Vec::new(),
             },
@@ -447,7 +450,7 @@ mod tests {
             None,
             None,
             Some("example"),
-            vec![MacosInstallerKind::Pkg],
+            vec![MacosBundlerKind::Pkg],
             MacosPkgConfig {
                 identifier: Some("com.ufnkam.example".to_owned()),
                 install_path: Some("/Applications".to_owned()),
@@ -470,7 +473,7 @@ mod tests {
             &temp_dir.join("build"),
             &platform_manifest,
             &target_manifest,
-            &MacosInstallerKind::Pkg,
+            &MacosBundlerKind::Pkg,
         )
         .expect("pkg bundle should be created");
 
