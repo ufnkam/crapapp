@@ -66,7 +66,8 @@ impl BuildManifest {
             };
             let shortcuts = match &platform {
                 PlatformConfig::Windows(windows) => windows.shortcuts.as_slice(),
-                PlatformConfig::Macos(_) | PlatformConfig::Linux(_) => &[],
+                PlatformConfig::Linux(linux) => linux.shortcuts.as_slice(),
+                PlatformConfig::Macos(_) => &[],
             };
             validate_shortcut_icons(shortcuts)?;
 
@@ -110,7 +111,13 @@ impl BuildManifest {
             app_name: cargo_package.name,
             version: cargo_package.version,
             bundled_at: chrono::Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true),
-            build: BuildConfigManifest::from_crap_manifest(manifest, cargo_package.description),
+            build: BuildConfigManifest::from_crap_manifest(
+                manifest,
+                cargo_package.description,
+                cargo_package.homepage,
+                cargo_package.license,
+                cargo_package.license_file,
+            ),
             platforms,
         })
     }
@@ -163,6 +170,14 @@ impl BuildManifest {
 
         if let Some(description) = &self.build.description {
             output.push_str(&format!("description: {description}\n"));
+        }
+
+        if let Some(homepage) = &self.build.homepage {
+            output.push_str(&format!("homepage: {homepage}\n"));
+        }
+
+        if let Some(license) = &self.build.license {
+            output.push_str(&format!("license: {license}\n"));
         }
 
         if !self.build.packages.is_empty() {

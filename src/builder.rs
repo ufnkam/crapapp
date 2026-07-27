@@ -5,8 +5,68 @@ use std::process::Command;
 use anyhow::{Context, Result, bail};
 
 use crate::build_manifest::BuildManifest;
-use crate::bundlers::{LinuxBundler, MacosBundler, WindowsBundler};
+use crate::bundlers::{
+    LinuxBundler, LinuxBundlerKind, MacosBundler, MacosBundlerKind, WindowsBundler,
+    WindowsBundlerKind,
+};
 use crate::platform_manifest::{PlatformBuildManifest, PlatformManifest};
+use crate::progress;
+
+#[derive(Debug)]
+pub struct BundleSelection {
+    windows: Vec<WindowsBundlerKind>,
+    macos: Vec<MacosBundlerKind>,
+    linux: Vec<LinuxBundlerKind>,
+}
+
+impl BundleSelection {
+    pub fn new(
+        windows: Vec<WindowsBundlerKind>,
+        macos: Vec<MacosBundlerKind>,
+        linux: Vec<LinuxBundlerKind>,
+    ) -> Self {
+        Self {
+            windows,
+            macos,
+            linux,
+        }
+    }
+
+    fn all() -> Self {
+        Self::new(Vec::new(), Vec::new(), Vec::new())
+    }
+
+    fn has_platform_filters(&self) -> bool {
+        !self.windows.is_empty() || !self.macos.is_empty() || !self.linux.is_empty()
+    }
+
+    fn includes_windows(&self) -> bool {
+        !self.has_platform_filters() || !self.windows.is_empty()
+    }
+
+    fn includes_macos(&self) -> bool {
+        !self.has_platform_filters() || !self.macos.is_empty()
+    }
+
+    fn includes_linux(&self) -> bool {
+        !self.has_platform_filters() || !self.linux.is_empty()
+    }
+
+    fn windows_bundles(
+        &self,
+        configured: &[WindowsBundlerKind],
+    ) -> Result<Vec<WindowsBundlerKind>> {
+        select_bundles("windows", configured, &self.windows)
+    }
+
+    fn macos_bundles(&self, configured: &[MacosBundlerKind]) -> Result<Vec<MacosBundlerKind>> {
+        select_bundles("macos", configured, &self.macos)
+    }
+
+    fn linux_bundles(&self, configured: &[LinuxBundlerKind]) -> Result<Vec<LinuxBundlerKind>> {
+        select_bundles("linux", configured, &self.linux)
+    }
+}
 
 pub struct Builder<'a> {
     build_manifest: &'a BuildManifest,
@@ -19,50 +79,63 @@ impl<'a> Builder<'a> {
 
     pub fn build(&self) -> Result<()> {
         let build_root = build_root()?;
-        validate_build_environments(self.build_manifest)?;
+        let selection = BundleSelection::all();
+        validate_build_environments(self.build_manifest, &selection)?;
 
         for platform in &self.build_manifest.platforms {
-            for target in platform.targets() {
-                build_target(&build_root, self.build_manifest, target)?;
-            }
-        }
-
-        Ok(())
-    }
-
-    pub fn bundle(&self, build: bool) -> Result<()> {
-        let build_root = build_root()?;
-        let build_dir = build_root.join(".crapapp_build");
-        reset_build_dir(&build_dir)?;
-
-        if build {
-            validate_build_environments(self.build_manifest)?;
-
-            for platform in &self.build_manifest.platforms {
+            if platform_included(platform, &selection) {
                 for target in platform.targets() {
                     build_target(&build_root, self.build_manifest, target)?;
                 }
             }
         }
 
-        validate_bundle_inputs(self.build_manifest)?;
+        Ok(())
+    }
+
+    pub fn bundle(&self, build: bool, selection: &BundleSelection) -> Result<()> {
+        validate_selected_platforms(self.build_manifest, selection)?;
+
+        let build_root = build_root()?;
+        let build_dir = build_root.join(".crapapp_build");
+        reset_build_dir(&build_dir)?;
+
+        if build {
+            validate_build_environments(self.build_manifest, selection)?;
+
+            for platform in &self.build_manifest.platforms {
+                if platform_included(platform, selection) {
+                    for target in platform.targets() {
+                        build_target(&build_root, self.build_manifest, target)?;
+                    }
+                }
+            }
+        }
+
+        validate_bundle_inputs(self.build_manifest, selection)?;
 
         if let Some(PlatformBuildManifest::Windows(platform)) =
             self.build_manifest.get_platform_config("windows")
+            && selection.includes_windows()
         {
-            WindowsBundler::new(self.build_manifest, platform, &build_dir).bundle()?;
+            let bundles = selection.windows_bundles(&platform.bundle)?;
+            WindowsBundler::new(self.build_manifest, platform, &build_dir).bundle(&bundles)?;
         }
 
         if let Some(PlatformBuildManifest::Macos(platform)) =
             self.build_manifest.get_platform_config("macos")
+            && selection.includes_macos()
         {
-            MacosBundler::new(self.build_manifest, platform, &build_dir).bundle()?;
+            let bundles = selection.macos_bundles(&platform.bundle)?;
+            MacosBundler::new(self.build_manifest, platform, &build_dir).bundle(&bundles)?;
         }
 
         if let Some(PlatformBuildManifest::Linux(platform)) =
             self.build_manifest.get_platform_config("linux")
+            && selection.includes_linux()
         {
-            LinuxBundler::new(self.build_manifest, platform, &build_dir).bundle()?;
+            let bundles = selection.linux_bundles(&platform.bundle)?;
+            LinuxBundler::new(self.build_manifest, platform, &build_dir).bundle(&bundles)?;
         }
 
         Ok(())
@@ -75,7 +148,7 @@ fn build_target(build_root: &Path, build_manifest: &BuildManifest, target: &str)
     let mut command = Command::new("cargo");
     configure_target_toolchain(&mut command, target)?;
     command.current_dir(build_root);
-    command.arg("build").arg("--release");
+    command.arg("build").arg("--release").arg("--quiet");
     command.arg("--target-dir").arg(build_root.join("target"));
     command.arg("--target").arg(target);
 
@@ -89,9 +162,11 @@ fn build_target(build_root: &Path, build_manifest: &BuildManifest, target: &str)
             .arg(build_manifest.build.features.join(" "));
     }
 
-    let status = command
-        .status()
-        .with_context(|| format!("failed to run cargo build for {target}"))?;
+    let status = progress::run(&format!("Building target {target}"), || {
+        command
+            .status()
+            .with_context(|| format!("failed to run cargo build for {target}"))
+    })?;
 
     if !status.success() {
         bail!("cargo build failed for {target}");
@@ -100,11 +175,33 @@ fn build_target(build_root: &Path, build_manifest: &BuildManifest, target: &str)
     Ok(())
 }
 
-fn validate_build_environments(build_manifest: &BuildManifest) -> Result<()> {
+fn validate_build_environments(
+    build_manifest: &BuildManifest,
+    selection: &BundleSelection,
+) -> Result<()> {
     for platform in &build_manifest.platforms {
-        for target in platform.targets() {
-            validate_target_build_environment(target)?;
+        if platform_included(platform, selection) {
+            for target in platform.targets() {
+                validate_target_build_environment(target)?;
+            }
         }
+    }
+
+    Ok(())
+}
+
+fn validate_selected_platforms(
+    build_manifest: &BuildManifest,
+    selection: &BundleSelection,
+) -> Result<()> {
+    if !selection.windows.is_empty() && build_manifest.get_platform_config("windows").is_none() {
+        bail!("windows bundles were requested, but CRAP.toml has no windows platform");
+    }
+    if !selection.macos.is_empty() && build_manifest.get_platform_config("macos").is_none() {
+        bail!("macos bundles were requested, but CRAP.toml has no macos platform");
+    }
+    if !selection.linux.is_empty() && build_manifest.get_platform_config("linux").is_none() {
+        bail!("linux bundles were requested, but CRAP.toml has no linux platform");
     }
 
     Ok(())
@@ -221,23 +318,57 @@ fn find_executable(name: &str) -> Option<PathBuf> {
     None
 }
 
-fn validate_bundle_inputs(build_manifest: &BuildManifest) -> Result<()> {
+fn validate_bundle_inputs(
+    build_manifest: &BuildManifest,
+    selection: &BundleSelection,
+) -> Result<()> {
     for platform in &build_manifest.platforms {
-        for target in target_manifests(platform) {
-            for file in &target.files {
-                if !Path::new(&file.source).is_file() {
-                    bail!(
-                        "{} bundle input for target {} is missing: {}",
-                        platform.platform(),
-                        target.target,
-                        file.source
-                    );
+        if platform_included(platform, selection) {
+            for target in target_manifests(platform) {
+                for file in &target.files {
+                    if !Path::new(&file.source).is_file() {
+                        bail!(
+                            "{} bundle input for target {} is missing: {}",
+                            platform.platform(),
+                            target.target,
+                            file.source
+                        );
+                    }
                 }
             }
         }
     }
 
     Ok(())
+}
+
+fn platform_included(platform: &PlatformBuildManifest, selection: &BundleSelection) -> bool {
+    match platform {
+        PlatformBuildManifest::Windows(_) => selection.includes_windows(),
+        PlatformBuildManifest::Macos(_) => selection.includes_macos(),
+        PlatformBuildManifest::Linux(_) => selection.includes_linux(),
+    }
+}
+
+fn select_bundles<T>(platform: &str, configured: &[T], requested: &[T]) -> Result<Vec<T>>
+where
+    T: Copy + Eq + std::fmt::Display,
+{
+    if requested.is_empty() {
+        return Ok(configured.to_vec());
+    }
+
+    let mut selected = Vec::with_capacity(requested.len());
+    for bundle in requested {
+        if !configured.contains(bundle) {
+            bail!("{platform} bundle {bundle} is not configured in CRAP.toml");
+        }
+        if !selected.contains(bundle) {
+            selected.push(*bundle);
+        }
+    }
+
+    Ok(selected)
 }
 
 fn target_manifests(platform: &PlatformBuildManifest) -> &[crate::target_manifest::TargetManifest] {

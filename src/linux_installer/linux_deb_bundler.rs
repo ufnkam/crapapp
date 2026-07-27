@@ -6,7 +6,8 @@ use anyhow::Context;
 use crate::build_manifest::BuildManifest;
 use crate::bundlers::LinuxBundlerKind;
 use crate::linux_installer::deb::{self, DebSpec};
-use crate::package_metadata::{description, package_name};
+use crate::linux_installer::prepare_payload;
+use crate::package_metadata::{description, homepage, summary};
 use crate::platform_manifests::LinuxPlatformManifest;
 use crate::target_manifest::TargetManifest;
 
@@ -32,15 +33,15 @@ impl LinuxDebBundler {
         fs::create_dir_all(&target_dir)
             .with_context(|| format!("failed to create {}", target_dir.display()))?;
 
-        let package_name = package_name(&build_manifest.app_name);
-        let output = target_dir.join(format!("{package_name}.deb"));
+        let payload = prepare_payload(build_manifest, platform_manifest, target_manifest)?;
+        let output = target_dir.join(format!("{}.deb", payload.package));
         let architecture = if target_manifest.target.starts_with("aarch64-") {
             "arm64"
         } else {
             "amd64"
         };
         let spec = DebSpec {
-            package: package_name,
+            package: payload.package,
             version: build_manifest.version.clone(),
             bundled_at: build_manifest.bundled_at.clone(),
             maintainer: build_manifest
@@ -48,9 +49,12 @@ impl LinuxDebBundler {
                 .publisher
                 .clone()
                 .unwrap_or_else(|| "unknown".to_owned()),
+            summary: summary(build_manifest),
             description: description(build_manifest),
+            homepage: homepage(build_manifest).map(str::to_owned),
             architecture: architecture.to_owned(),
-            files: target_manifest.files.clone(),
+            files: payload.files,
+            generated_files: payload.generated_files,
             associated_files: platform_manifest.associated_files.clone(),
             eulas: platform_manifest.eulas.clone(),
         };

@@ -2,7 +2,9 @@
 use std::fs;
 use std::path::Path;
 
-use anyhow::{Context, bail};
+#[cfg(unix)]
+use anyhow::Context;
+use anyhow::bail;
 
 pub fn icon_file_name(source: &str) -> anyhow::Result<&str> {
     let source_path = Path::new(source);

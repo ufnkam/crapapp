@@ -2,6 +2,9 @@
 publisher = "ufnkam"
 display_name = "Example App"
 description = "Example app packaged by cargo-crapapp"
+homepage = "https://example.com"
+license = "MIT"
+license_file = "LICENSE"
 packages = ["example"]
 features = ["some_feature"]
 
@@ -28,12 +31,18 @@ eulas = [
     { path = "EULA2.txt", required = false },
 ]
 display_icon = "build_assets/icon.ico"
-bundle = [ "gui", "msi", "cli" ]
+bundle = "msi"
 
 [linux]
 targets = ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu"]
 bundle = ["deb", "rpm", "aur"]
 bin_dir = "/usr/bin"
+display_icon = "build_assets/icon.ico"
+shortcuts = [
+    { binary = "example", name = "Example App" },
+    { binary = "first_bin", name = "Example First", icon = "build_assets/first.ico" },
+    { binary = "second_bin", name = "Example Second", icon = "build_assets/second.ico" },
+]
 files = [
     { source = "Cargo.toml", destination = "/usr/share/doc/example/Cargo.toml" },
 ]

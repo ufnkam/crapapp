@@ -42,6 +42,24 @@ pub fn publisher(build_manifest: &BuildManifest) -> String {
         .to_owned()
 }
 
+pub fn homepage(build_manifest: &BuildManifest) -> Option<&str> {
+    build_manifest
+        .build
+        .homepage
+        .as_deref()
+        .filter(|homepage| !homepage.trim().is_empty())
+}
+
+pub fn license(build_manifest: &BuildManifest) -> String {
+    build_manifest
+        .build
+        .license
+        .as_deref()
+        .filter(|license| !license.trim().is_empty())
+        .unwrap_or("LicenseRef-proprietary")
+        .to_owned()
+}
+
 pub fn description(build_manifest: &BuildManifest) -> String {
     build_manifest
         .build
@@ -59,6 +77,10 @@ pub fn description(build_manifest: &BuildManifest) -> String {
                 .unwrap_or(&build_manifest.app_name)
         })
         .to_owned()
+}
+
+pub fn summary(build_manifest: &BuildManifest) -> String {
+    display_name(build_manifest)
 }
 
 pub fn artifact_file_stem(build_manifest: &BuildManifest) -> String {

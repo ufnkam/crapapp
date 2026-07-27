@@ -1,6 +1,7 @@
 use crate::bundlers::LinuxBundlerKind;
 use crate::manifest_file::{
     AssociatedFile, EulaFile, FileMapping, LinuxTarget, PlatformManifest as SourcePlatformManifest,
+    ShortcutMapping,
 };
 use crate::platform_manifest::PlatformManifest;
 use crate::target_manifest::TargetManifest;
@@ -30,6 +31,8 @@ pub struct LinuxPlatformManifest<Target = LinuxTarget> {
     pub associated_files: Vec<AssociatedFile>,
     #[serde(default)]
     pub eulas: Vec<EulaFile>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub shortcuts: Vec<ShortcutMapping>,
     pub display_icon: Option<String>,
 }
 
@@ -83,6 +86,7 @@ impl LinuxPlatformManifest<LinuxTarget> {
             files: Vec::new(),
             associated_files: self.associated_files.clone(),
             eulas: self.eulas.clone(),
+            shortcuts: self.shortcuts.clone(),
             display_icon: display_icon.map(str::to_owned),
         }
     }

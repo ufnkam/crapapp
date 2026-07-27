@@ -11,7 +11,8 @@ use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
 
 use crate::build_manifest::{BuildManifest, BuildManifestFormatter};
-use crate::builder::Builder;
+use crate::builder::{Builder, BundleSelection};
+use crate::bundlers::{LinuxBundlerKind, MacosBundlerKind, WindowsBundlerKind};
 use crate::manifest_file::{CrapManifest, MANIFEST_PATH};
 
 #[derive(Debug, Parser)]
@@ -37,6 +38,15 @@ enum Command {
         /// Skip building configured cargo packages before bundling.
         #[arg(short = 'n', long)]
         no_build: bool,
+        /// Build only these Linux bundle formats.
+        #[arg(long, value_enum, num_args = 1..)]
+        linux: Vec<LinuxBundlerKind>,
+        /// Build only these Windows bundle formats.
+        #[arg(long, value_enum, num_args = 1..)]
+        windows: Vec<WindowsBundlerKind>,
+        /// Build only these macOS bundle formats.
+        #[arg(long, value_enum, num_args = 1..)]
+        macos: Vec<MacosBundlerKind>,
     },
 }
 
@@ -63,11 +73,17 @@ pub fn run_cli() -> Result<()> {
 
             Builder::new(&build_manifest).build()?;
         }
-        Command::Bundle { no_build } => {
+        Command::Bundle {
+            no_build,
+            linux,
+            windows,
+            macos,
+        } => {
             let manifest = CrapManifest::load(MANIFEST_PATH)?;
             let build_manifest = BuildManifest::from_crap_manifest(&manifest)?;
+            let selection = BundleSelection::new(windows, macos, linux);
 
-            Builder::new(&build_manifest).bundle(!no_build)?;
+            Builder::new(&build_manifest).bundle(!no_build, &selection)?;
         }
     }
 

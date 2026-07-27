@@ -6,7 +6,8 @@ use anyhow::Context;
 use crate::build_manifest::BuildManifest;
 use crate::bundlers::LinuxBundlerKind;
 use crate::linux_installer::aur::{self, AurSpec};
-use crate::package_metadata::{description, package_name};
+use crate::linux_installer::prepare_payload;
+use crate::package_metadata::description;
 use crate::platform_manifests::LinuxPlatformManifest;
 use crate::target_manifest::TargetManifest;
 
@@ -32,24 +33,20 @@ impl LinuxAurBundler {
         fs::create_dir_all(&target_dir)
             .with_context(|| format!("failed to create {}", target_dir.display()))?;
 
-        let package = package_name(&build_manifest.app_name);
-        let output = target_dir.join(format!("{package}.src.tar.gz"));
-        let architecture = if target_manifest.target.starts_with("aarch64-") {
-            "aarch64"
-        } else {
-            "x86_64"
-        };
+        let payload = prepare_payload(build_manifest, platform_manifest, target_manifest)?;
         let spec = AurSpec {
-            package,
+            package: payload.package,
             version: build_manifest.version.clone(),
             bundled_at: build_manifest.bundled_at.clone(),
             description: description(build_manifest),
-            architecture: architecture.to_owned(),
-            files: target_manifest.files.clone(),
+            architecture: payload.architecture.to_owned(),
+            files: payload.files,
+            generated_files: payload.generated_files,
             associated_files: platform_manifest.associated_files.clone(),
             eulas: platform_manifest.eulas.clone(),
         };
 
+        let output = target_dir.join(format!("{}.aur", spec.package));
         aur::build(&spec, &output)
             .with_context(|| format!("failed to write {}", output.display()))?;
 

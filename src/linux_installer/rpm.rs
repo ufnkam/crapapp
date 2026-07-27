@@ -1,10 +1,11 @@
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use anyhow::{Context, bail};
 use chrono::{DateTime, TimeZone, Utc};
-use rpm::{BuildConfig, CompressionType, FileOptions, PackageBuilder};
+use rpm::{BuildConfig, CompressionType, FileOptions, PackageBuilder, Scriptlet};
 
+use crate::linux_installer::{GeneratedFile, install_relative_path};
 use crate::manifest_file::{AssociatedFile, AssociatedFileKind, EulaFile};
 use crate::payload_file::PayloadFile;
 
@@ -17,7 +18,10 @@ pub struct RpmSpec {
     pub description: String,
     pub architecture: String,
     pub license: String,
+    pub homepage: Option<String>,
+    pub publisher: String,
     pub files: Vec<PayloadFile>,
+    pub generated_files: Vec<GeneratedFile>,
     pub associated_files: Vec<AssociatedFile>,
     pub eulas: Vec<EulaFile>,
 }
@@ -50,15 +54,32 @@ pub fn build(spec: &RpmSpec, output: &Path) -> anyhow::Result<()> {
             spec.description, spec.bundled_at
         ))
         .build_host("cargo-crapapp");
+    if let Some(homepage) = &spec.homepage {
+        builder.url(homepage);
+    }
+    builder
+        .vendor(&spec.publisher)
+        .post_install_script(Scriptlet::new(metadata_cache_refresh_script()))
+        .post_uninstall_script(Scriptlet::new(metadata_cache_refresh_script()));
 
     for file in &spec.files {
         builder
             .with_file(
                 &file.source,
-                FileOptions::new(format!("/{}", package_path(&file.destination)?))
+                FileOptions::new(format!("/{}", install_relative_path(&file.destination)?))
                     .permissions(if file.executable { 0o755 } else { 0o644 }),
             )
             .with_context(|| format!("failed to add {} as {}", file.source, file.destination))?;
+    }
+
+    for file in &spec.generated_files {
+        builder
+            .with_file_contents(
+                file.bytes.clone(),
+                FileOptions::new(format!("/{}", install_relative_path(&file.install_path)?))
+                    .permissions(if file.executable { 0o755 } else { 0o644 }),
+            )
+            .with_context(|| format!("failed to add generated file {}", file.install_path))?;
     }
 
     for file in &spec.associated_files {
@@ -66,7 +87,7 @@ pub fn build(spec: &RpmSpec, output: &Path) -> anyhow::Result<()> {
             AssociatedFileKind::Directory => {
                 builder
                     .with_dir_entry(
-                        FileOptions::dir(format!("/{}", package_path(&file.path)?))
+                        FileOptions::dir(format!("/{}", install_relative_path(&file.path)?))
                             .permissions(0o755),
                     )
                     .with_context(|| format!("failed to add directory {}", file.path))?;
@@ -75,7 +96,7 @@ pub fn build(spec: &RpmSpec, output: &Path) -> anyhow::Result<()> {
                 builder
                     .with_file_contents(
                         Vec::new(),
-                        FileOptions::new(format!("/{}", package_path(&file.path)?))
+                        FileOptions::new(format!("/{}", install_relative_path(&file.path)?))
                             .permissions(0o644),
                     )
                     .with_context(|| format!("failed to add file {}", file.path))?;
@@ -106,42 +127,25 @@ pub fn build(spec: &RpmSpec, output: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn metadata_cache_refresh_script() -> &'static str {
+    r#"if command -v update-desktop-database >/dev/null 2>&1; then
+  update-desktop-database /usr/share/applications >/dev/null 2>&1 || :
+fi
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+  gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor >/dev/null 2>&1 || :
+fi
+if command -v appstreamcli >/dev/null 2>&1; then
+  appstreamcli refresh-cache --force >/dev/null 2>&1 || :
+fi
+"#
+}
+
 fn validate(spec: &RpmSpec) -> anyhow::Result<()> {
     if spec.files.is_empty() {
         bail!("rpm package has no files to package");
     }
 
     Ok(())
-}
-
-fn package_path(path: &str) -> anyhow::Result<String> {
-    if path.trim().is_empty() {
-        bail!("package path must not be empty");
-    }
-
-    let path = Path::new(path);
-    let mut relative = PathBuf::new();
-    for component in path.components() {
-        match component {
-            std::path::Component::RootDir | std::path::Component::CurDir => {}
-            std::path::Component::Normal(part) => relative.push(part),
-            std::path::Component::ParentDir | std::path::Component::Prefix(_) => {
-                bail!(
-                    "package path {} must not contain parent or prefix components",
-                    path.display()
-                );
-            }
-        }
-    }
-
-    if relative.as_os_str().is_empty() {
-        bail!(
-            "package path {} must not resolve to package root",
-            path.display()
-        );
-    }
-
-    Ok(relative.display().to_string())
 }
 
 fn package_timestamp(value: &str) -> u32 {
@@ -163,6 +167,7 @@ fn package_timestamp(value: &str) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::{RpmSpec, build};
+    use crate::linux_installer::GeneratedFile;
     use crate::payload_file::PayloadFile;
     use std::fs;
 
@@ -186,11 +191,25 @@ mod tests {
                 summary: "Example".to_owned(),
                 description: "Example".to_owned(),
                 architecture: "x86_64".to_owned(),
-                license: "custom".to_owned(),
+                license: "MIT".to_owned(),
+                homepage: Some("https://example.com".to_owned()),
+                publisher: "Example Publisher".to_owned(),
                 files: vec![PayloadFile::executable(
                     source.display().to_string(),
                     "/usr/bin/example".to_owned(),
                 )],
+                generated_files: vec![
+                    GeneratedFile {
+                        install_path: "/usr/share/metainfo/com.example.app.metainfo.xml".to_owned(),
+                        bytes: b"<component/>".to_vec(),
+                        executable: false,
+                    },
+                    GeneratedFile {
+                        install_path: "/usr/share/doc/example/copyright".to_owned(),
+                        bytes: b"License: MIT\n".to_vec(),
+                        executable: false,
+                    },
+                ],
                 associated_files: Vec::new(),
                 eulas: Vec::new(),
             },
@@ -200,6 +219,27 @@ mod tests {
 
         let bytes = fs::read(&output).expect("rpm should be readable");
         assert_eq!(&bytes[..4], &[0xed, 0xab, 0xee, 0xdb]);
+        let package = ::rpm::Package::open(&output).expect("rpm should open");
+        assert_eq!(package.metadata.get_summary().unwrap(), "Example");
+        assert_eq!(package.metadata.get_license().unwrap(), "MIT");
+        assert_eq!(package.metadata.get_url().unwrap(), "https://example.com");
+        assert!(
+            package
+                .metadata
+                .get_file_entries()
+                .unwrap()
+                .iter()
+                .any(|entry| entry.path().to_string_lossy()
+                    == "/usr/share/metainfo/com.example.app.metainfo.xml")
+        );
+        assert!(
+            package
+                .metadata
+                .get_file_entries()
+                .unwrap()
+                .iter()
+                .any(|entry| entry.path().to_string_lossy() == "/usr/share/doc/example/copyright")
+        );
 
         let _ = fs::remove_dir_all(&temp_dir);
     }

@@ -21,6 +21,9 @@ pub struct BuildConfig {
     pub publisher: Option<String>,
     pub display_name: Option<String>,
     pub description: Option<String>,
+    pub homepage: Option<String>,
+    pub license: Option<String>,
+    pub license_file: Option<String>,
     #[serde(default)]
     pub packages: Vec<String>,
     #[serde(default)]
@@ -279,7 +282,7 @@ mod tests {
     }
 
     #[test]
-    fn windows_bundle_defaults_to_cli() {
+    fn windows_bundle_defaults_to_msi() {
         let manifest = parse_manifest(
             r#"
             [windows]
@@ -288,7 +291,7 @@ mod tests {
         );
 
         let windows = manifest.windows.expect("windows platform should exist");
-        assert_eq!(windows.bundles(), vec![WindowsBundlerKind::Cli]);
+        assert_eq!(windows.bundles(), vec![WindowsBundlerKind::Msi]);
     }
 
     #[test]
@@ -297,12 +300,12 @@ mod tests {
             r#"
             [windows]
             targets = ["x86_64-pc-windows-gnu"]
-            bundle = "gui"
+            bundle = "msi"
             "#,
         );
 
         let windows = manifest.windows.expect("windows platform should exist");
-        assert_eq!(windows.bundles(), vec![WindowsBundlerKind::Gui]);
+        assert_eq!(windows.bundles(), vec![WindowsBundlerKind::Msi]);
     }
 
     #[test]
@@ -311,15 +314,12 @@ mod tests {
             r#"
             [windows]
             targets = ["x86_64-pc-windows-gnu"]
-            bundle = ["cli", "gui"]
+            bundle = ["msi", "msi"]
             "#,
         );
 
         let windows = manifest.windows.expect("windows platform should exist");
-        assert_eq!(
-            windows.bundles(),
-            vec![WindowsBundlerKind::Cli, WindowsBundlerKind::Gui]
-        );
+        assert_eq!(windows.bundles(), vec![WindowsBundlerKind::Msi]);
     }
 
     #[test]
@@ -328,15 +328,12 @@ mod tests {
             r#"
             [windows]
             targets = ["x86_64-pc-windows-gnu"]
-            bundle = ["gui", "cli", "gui"]
+            bundle = ["msi", "msi", "msi"]
             "#,
         );
 
         let windows = manifest.windows.expect("windows platform should exist");
-        assert_eq!(
-            windows.bundles(),
-            vec![WindowsBundlerKind::Gui, WindowsBundlerKind::Cli]
-        );
+        assert_eq!(windows.bundles(), vec![WindowsBundlerKind::Msi]);
     }
 
     #[test]
@@ -467,6 +464,9 @@ mod tests {
             install_path = "/opt/example"
             bin_dir = "/usr/bin"
             display_icon = "assets/app.png"
+            shortcuts = [
+                { binary = "example", name = "Example App" },
+            ]
             files = [
                 { source = "Cargo.toml", destination = "share/example/Cargo.toml" },
             ]
@@ -491,6 +491,7 @@ mod tests {
         );
         assert_eq!(linux.install_path.as_deref(), Some("/opt/example"));
         assert_eq!(linux.bin_dir.as_deref(), Some("/usr/bin"));
+        assert_eq!(linux.shortcuts.len(), 1);
         assert_eq!(linux.associated_files.len(), 1);
         assert_eq!(linux.eulas.len(), 2);
         assert!(!linux.eulas[1].required());

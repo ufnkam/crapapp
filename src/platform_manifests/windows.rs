@@ -45,7 +45,7 @@ pub struct WindowsPlatformManifest<Target = WindowsTarget> {
 impl<Target> WindowsPlatformManifest<Target> {
     pub fn bundles(&self) -> Vec<WindowsBundlerKind> {
         let bundles = if self.bundle.is_empty() {
-            vec![WindowsBundlerKind::Cli]
+            vec![WindowsBundlerKind::Msi]
         } else {
             self.bundle.clone()
         };

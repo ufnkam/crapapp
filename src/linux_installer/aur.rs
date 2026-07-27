@@ -1,13 +1,14 @@
-use std::fs;
+use std::fs::{self, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, bail};
-use chrono::{DateTime, TimeZone, Utc};
 use flate2::Compression;
 use flate2::write::GzEncoder;
 use sha1::{Digest, Sha1};
+use tar::{Builder, Header};
 
+use crate::linux_installer::{GeneratedFile, install_relative_path};
 use crate::manifest_file::{AssociatedFile, AssociatedFileKind, EulaFile};
 use crate::payload_file::PayloadFile;
 
@@ -18,6 +19,7 @@ pub struct AurSpec {
     pub description: String,
     pub architecture: String,
     pub files: Vec<PayloadFile>,
+    pub generated_files: Vec<GeneratedFile>,
     pub associated_files: Vec<AssociatedFile>,
     pub eulas: Vec<EulaFile>,
 }
@@ -29,11 +31,61 @@ pub fn build(spec: &AurSpec, output: &Path) -> anyhow::Result<()> {
         fs::create_dir_all(parent)
             .with_context(|| format!("failed to create {}", parent.display()))?;
     }
+    if output.exists() {
+        fs::remove_file(output)
+            .with_context(|| format!("failed to remove {}", output.display()))?;
+    }
 
-    fs::write(output, source_archive(spec)?)
-        .with_context(|| format!("failed to write {}", output.display()))?;
+    let entries = source_entries(spec)?;
+    let package_root = format!("{}/", spec.package);
+    let file =
+        File::create(output).with_context(|| format!("failed to create {}", output.display()))?;
+    let encoder = GzEncoder::new(file, Compression::default());
+    let mut archive = Builder::new(encoder);
+    append_file(
+        &mut archive,
+        &format!("{package_root}PKGBUILD"),
+        0o644,
+        pkgbuild(spec, &entries)?.as_bytes(),
+    )?;
+    append_file(
+        &mut archive,
+        &format!("{package_root}.SRCINFO"),
+        0o644,
+        srcinfo(spec, &entries).as_bytes(),
+    )?;
+    for entry in entries {
+        append_file(
+            &mut archive,
+            &format!("{package_root}{}", entry.archive_path),
+            entry.mode,
+            &entry.bytes,
+        )?;
+    }
+    let encoder = archive
+        .into_inner()
+        .context("failed to finish AUR archive")?;
+    encoder
+        .finish()
+        .context("failed to finish AUR compression")?;
 
     Ok(())
+}
+
+fn append_file<W: Write>(
+    archive: &mut Builder<W>,
+    path: &str,
+    mode: u32,
+    bytes: &[u8],
+) -> anyhow::Result<()> {
+    let mut header = Header::new_gnu();
+    header.set_size(bytes.len() as u64);
+    header.set_mode(mode);
+    header.set_mtime(0);
+    header.set_cksum();
+    archive
+        .append_data(&mut header, path, bytes)
+        .with_context(|| format!("failed to add {path} to AUR archive"))
 }
 
 fn validate(spec: &AurSpec) -> anyhow::Result<()> {
@@ -44,57 +96,44 @@ fn validate(spec: &AurSpec) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn source_archive(spec: &AurSpec) -> anyhow::Result<Vec<u8>> {
-    let root = format!("{}-{}", spec.package, spec.version);
-    let mut tar = Vec::new();
-    let timestamp = package_timestamp(&spec.bundled_at);
-    let entries = source_entries(spec)?;
-    let pkgbuild = pkgbuild(spec, &entries)?;
-    write_tar_file(
-        &mut tar,
-        &format!("{root}/PKGBUILD"),
-        pkgbuild.as_bytes(),
-        0o644,
-        timestamp,
-    )?;
-
-    for entry in entries {
-        let bytes = fs::read(&entry.source)
-            .with_context(|| format!("failed to read {}", entry.source.display()))?;
-        write_tar_file(
-            &mut tar,
-            &format!("{root}/{}", entry.archive_path),
-            &bytes,
-            entry.mode,
-            timestamp,
-        )?;
-    }
-
-    finish_tar(&mut tar);
-    gzip(&tar)
-}
-
 struct SourceEntry {
-    source: PathBuf,
     archive_path: String,
     install_path: String,
     mode: u32,
+    bytes: Vec<u8>,
 }
 
 fn source_entries(spec: &AurSpec) -> anyhow::Result<Vec<SourceEntry>> {
     let mut entries = Vec::new();
 
     for (index, file) in spec.files.iter().enumerate() {
+        let source = PathBuf::from(&file.source);
+        let bytes =
+            fs::read(&source).with_context(|| format!("failed to read {}", source.display()))?;
         entries.push(SourceEntry {
-            source: PathBuf::from(&file.source),
             archive_path: format!("payload-{index}-{}", source_file_name(&file.source)?),
-            install_path: package_path(&file.destination)?,
+            install_path: install_relative_path(&file.destination)?,
             mode: if file.executable { 0o755 } else { 0o644 },
+            bytes,
+        });
+    }
+
+    for (index, file) in spec.generated_files.iter().enumerate() {
+        entries.push(SourceEntry {
+            archive_path: format!(
+                "generated-{index}-{}",
+                source_file_name(&file.install_path)?
+            ),
+            install_path: install_relative_path(&file.install_path)?,
+            mode: if file.executable { 0o755 } else { 0o644 },
+            bytes: file.bytes.clone(),
         });
     }
 
     for eula in &spec.eulas {
         let source = PathBuf::from(eula.path());
+        let bytes =
+            fs::read(&source).with_context(|| format!("failed to read {}", source.display()))?;
         entries.push(SourceEntry {
             archive_path: format!("license-{}", source_file_name(eula.path())?),
             install_path: format!(
@@ -102,8 +141,8 @@ fn source_entries(spec: &AurSpec) -> anyhow::Result<Vec<SourceEntry>> {
                 spec.package,
                 source_file_name(eula.path())?
             ),
-            source,
             mode: 0o644,
+            bytes,
         });
     }
 
@@ -118,12 +157,8 @@ fn pkgbuild(spec: &AurSpec, entries: &[SourceEntry]) -> anyhow::Result<String> {
         .join(" ");
     let checksums = entries
         .iter()
-        .map(|entry| {
-            fs::read(&entry.source)
-                .map(|bytes| format!("'{}'", hex(&sha1(&bytes))))
-                .with_context(|| format!("failed to read {}", entry.source.display()))
-        })
-        .collect::<anyhow::Result<Vec<_>>>()?
+        .map(|entry| format!("'{}'", hex(&sha1(&entry.bytes))))
+        .collect::<Vec<_>>()
         .join(" ");
 
     let mut package = String::new();
@@ -135,6 +170,7 @@ fn pkgbuild(spec: &AurSpec, entries: &[SourceEntry]) -> anyhow::Result<String> {
     package.push_str("url=''\n");
     package.push_str("license=('custom')\n");
     package.push_str(&format!("arch=('{}')\n", spec.architecture));
+    package.push_str("options=('!debug')\n");
     package.push_str(&format!("source=({source})\n"));
     package.push_str(&format!("sha1sums=({checksums})\n\n"));
     package.push_str("package() {\n");
@@ -152,7 +188,7 @@ fn pkgbuild(spec: &AurSpec, entries: &[SourceEntry]) -> anyhow::Result<String> {
     }
 
     for file in &spec.associated_files {
-        let path = package_path(&file.path)?;
+        let path = install_relative_path(&file.path)?;
         match file.kind {
             AssociatedFileKind::Directory => {
                 package.push_str(&format!("  install -dm755 \"$pkgdir/{path}\"\n"));
@@ -165,6 +201,27 @@ fn pkgbuild(spec: &AurSpec, entries: &[SourceEntry]) -> anyhow::Result<String> {
 
     package.push_str("}\n");
     Ok(package)
+}
+
+fn srcinfo(spec: &AurSpec, entries: &[SourceEntry]) -> String {
+    let sources = entries
+        .iter()
+        .map(|entry| format!("\tsource = {}", entry.archive_path))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let checksums = entries
+        .iter()
+        .map(|entry| format!("\tsha1sums = {}", hex(&sha1(&entry.bytes))))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let description = spec.description.replace('\n', " ");
+
+    format!(
+        "pkgbase = {package}\n\tpkgdesc = {description}\n\tpkgver = {pkgver}\n\tpkgrel = 1\n\turl = \n\tarch = {architecture}\n\tlicense = custom\n\toptions = !debug\n{sources}\n{checksums}\n\npkgname = {package}\n",
+        package = spec.package,
+        pkgver = pkgver(&spec.version),
+        architecture = spec.architecture
+    )
 }
 
 fn pkgver(version: &str) -> String {
@@ -181,119 +238,6 @@ fn source_file_name(path: &str) -> anyhow::Result<String> {
         .and_then(|name| name.to_str())
         .map(str::to_owned)
         .ok_or_else(|| anyhow::anyhow!("source path {path} must have a UTF-8 file name"))
-}
-
-fn package_path(path: &str) -> anyhow::Result<String> {
-    if path.trim().is_empty() {
-        bail!("package path must not be empty");
-    }
-
-    let path = Path::new(path);
-    let mut relative = PathBuf::new();
-    for component in path.components() {
-        match component {
-            std::path::Component::RootDir | std::path::Component::CurDir => {}
-            std::path::Component::Normal(part) => relative.push(part),
-            std::path::Component::ParentDir | std::path::Component::Prefix(_) => {
-                bail!(
-                    "package path {} must not contain parent or prefix components",
-                    path.display()
-                );
-            }
-        }
-    }
-
-    if relative.as_os_str().is_empty() {
-        bail!(
-            "package path {} must not resolve to package root",
-            path.display()
-        );
-    }
-
-    Ok(relative.display().to_string())
-}
-
-fn gzip(bytes: &[u8]) -> anyhow::Result<Vec<u8>> {
-    let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
-    encoder.write_all(bytes)?;
-    Ok(encoder.finish()?)
-}
-
-fn package_timestamp(value: &str) -> u64 {
-    DateTime::parse_from_rfc3339(value)
-        .map(|value| value.with_timezone(&Utc).timestamp().max(0) as u64)
-        .unwrap_or_else(|_| {
-            Utc.with_ymd_and_hms(2000, 1, 1, 0, 0, 0)
-                .single()
-                .expect("fixed source date must be valid")
-                .timestamp() as u64
-        })
-}
-
-fn write_tar_file(
-    output: &mut Vec<u8>,
-    path: &str,
-    bytes: &[u8],
-    mode: u32,
-    timestamp: u64,
-) -> anyhow::Result<()> {
-    write_tar_header(output, path, mode, bytes.len() as u64, timestamp)?;
-    output.extend_from_slice(bytes);
-    while !output.len().is_multiple_of(512) {
-        output.push(0);
-    }
-    Ok(())
-}
-
-fn write_tar_header(
-    output: &mut Vec<u8>,
-    path: &str,
-    mode: u32,
-    size: u64,
-    timestamp: u64,
-) -> anyhow::Result<()> {
-    if path.len() > 100 {
-        bail!("tar path {path} is too long");
-    }
-
-    let mut header = [0u8; 512];
-    write_tar_bytes(&mut header[0..100], path.as_bytes());
-    write_tar_octal(&mut header[100..108], mode as u64)?;
-    write_tar_octal(&mut header[108..116], 0)?;
-    write_tar_octal(&mut header[116..124], 0)?;
-    write_tar_octal(&mut header[124..136], size)?;
-    write_tar_octal(&mut header[136..148], timestamp)?;
-    for byte in &mut header[148..156] {
-        *byte = b' ';
-    }
-    header[156] = b'0';
-    write_tar_bytes(&mut header[257..263], b"ustar\0");
-    write_tar_bytes(&mut header[263..265], b"00");
-    let checksum = header.iter().map(|byte| *byte as u64).sum::<u64>();
-    let text = format!("{checksum:06o}\0 ");
-    header[148..156].copy_from_slice(text.as_bytes());
-    output.extend_from_slice(&header);
-    Ok(())
-}
-
-fn write_tar_bytes(field: &mut [u8], bytes: &[u8]) {
-    let len = bytes.len().min(field.len());
-    field[..len].copy_from_slice(&bytes[..len]);
-}
-
-fn write_tar_octal(field: &mut [u8], value: u64) -> anyhow::Result<()> {
-    let width = field.len();
-    let text = format!("{value:0width$o}", width = width - 1);
-    if text.len() + 1 > width {
-        bail!("tar octal value {value} does not fit in {width} bytes");
-    }
-    field[..text.len()].copy_from_slice(text.as_bytes());
-    field[text.len()] = 0;
-    Ok(())
-}
-
-fn finish_tar(output: &mut Vec<u8>) {
-    output.extend_from_slice(&[0; 1024]);
 }
 
 fn sha1(bytes: &[u8]) -> Vec<u8> {
@@ -314,14 +258,16 @@ fn hex(bytes: &[u8]) -> String {
 mod tests {
     use super::{AurSpec, build};
     use crate::payload_file::PayloadFile;
+    use flate2::read::GzDecoder;
     use std::fs;
+    use tar::Archive;
 
     #[test]
-    fn aur_source_package_contains_pkgbuild() {
+    fn aur_archive_contains_pkgbuild_and_payload() {
         let temp_dir =
             std::env::temp_dir().join(format!("cargo-crapapp-aur-{}", std::process::id()));
-        let source = temp_dir.join("../../example");
-        let output = temp_dir.join("example.src.tar.gz");
+        let source = temp_dir.join("example");
+        let output = temp_dir.join("example.aur");
 
         let _ = fs::remove_dir_all(&temp_dir);
         fs::create_dir_all(&temp_dir).expect("temp dir should be created");
@@ -338,6 +284,7 @@ mod tests {
                     source.display().to_string(),
                     "/usr/bin/example".to_owned(),
                 )],
+                generated_files: Vec::new(),
                 associated_files: Vec::new(),
                 eulas: Vec::new(),
             },
@@ -346,8 +293,88 @@ mod tests {
         .expect("AUR package should be written");
 
         assert!(output.is_file());
-        assert!(fs::metadata(&output).expect("metadata").len() > 0);
+        assert_eq!(
+            archive_paths(&output),
+            vec![
+                "example/PKGBUILD".to_owned(),
+                "example/.SRCINFO".to_owned(),
+                "example/payload-0-example".to_owned(),
+            ]
+        );
 
         let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn aur_archive_contains_srcinfo() {
+        let temp_dir =
+            std::env::temp_dir().join(format!("cargo-crapapp-aur-srcinfo-{}", std::process::id()));
+        let source = temp_dir.join("example");
+        let output = temp_dir.join("example.aur");
+
+        let _ = fs::remove_dir_all(&temp_dir);
+        fs::create_dir_all(&temp_dir).expect("temp dir should be created");
+        fs::write(&source, b"bin").expect("source should be written");
+
+        build(
+            &AurSpec {
+                package: "example".to_owned(),
+                version: "1.0.0".to_owned(),
+                bundled_at: "2000-01-01T00:00:00Z".to_owned(),
+                description: "Example".to_owned(),
+                architecture: "x86_64".to_owned(),
+                files: vec![PayloadFile::executable(
+                    source.display().to_string(),
+                    "/usr/bin/example".to_owned(),
+                )],
+                generated_files: Vec::new(),
+                associated_files: Vec::new(),
+                eulas: Vec::new(),
+            },
+            &output,
+        )
+        .expect("AUR archive should be generated");
+
+        let srcinfo = archive_file(&output, "example/.SRCINFO");
+        assert!(srcinfo.contains("pkgbase = example"));
+        assert!(srcinfo.contains("pkgname = example"));
+        assert!(srcinfo.contains("options = !debug"));
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    fn archive_paths(path: &std::path::Path) -> Vec<String> {
+        let file = fs::File::open(path).expect("AUR archive should open");
+        let mut archive = Archive::new(GzDecoder::new(file));
+        archive
+            .entries()
+            .expect("AUR archive entries should be read")
+            .map(|entry| {
+                entry
+                    .expect("AUR archive entry should be valid")
+                    .path()
+                    .expect("AUR archive path should be valid")
+                    .display()
+                    .to_string()
+            })
+            .collect()
+    }
+
+    fn archive_file(path: &std::path::Path, name: &str) -> String {
+        let file = fs::File::open(path).expect("AUR archive should open");
+        let mut archive = Archive::new(GzDecoder::new(file));
+        archive
+            .entries()
+            .expect("AUR archive entries should be read")
+            .find_map(|entry| {
+                let mut entry = entry.expect("AUR archive entry should be valid");
+                (entry.path().ok().as_deref() == Some(std::path::Path::new(name))).then(|| {
+                    let mut text = String::new();
+                    std::io::Read::read_to_string(&mut entry, &mut text)
+                        .expect("AUR archive file should be read");
+                    text
+                })
+            })
+            .expect("AUR archive file should exist")
     }
 }

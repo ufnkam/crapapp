@@ -6,6 +6,7 @@ use crate::macos_installer::app_bundler::MacosAppBundler;
 use crate::macos_installer::dmg_bundler::MacosDmgBundler;
 use crate::macos_installer::pkg_bundler::MacosPkgBundler;
 use crate::platform_manifests::MacosPlatformManifest;
+use crate::progress;
 
 pub struct MacosBundler<'a> {
     build_manifest: &'a BuildManifest,
@@ -26,10 +27,11 @@ impl<'a> MacosBundler<'a> {
         }
     }
 
-    pub fn bundle(&self) -> anyhow::Result<()> {
+    pub fn bundle(&self, bundles: &[MacosBundlerKind]) -> anyhow::Result<()> {
         for target in &self.platform.targets {
-            for bundle in &self.platform.bundle {
-                match bundle {
+            for bundle in bundles {
+                let message = format!("Bundling macos {} {}", target.target, bundle);
+                progress::run(&message, || match bundle {
                     MacosBundlerKind::App => {
                         MacosAppBundler::bundle(
                             self.build_manifest,
@@ -38,6 +40,7 @@ impl<'a> MacosBundler<'a> {
                             target,
                             bundle,
                         )?;
+                        Ok::<(), anyhow::Error>(())
                     }
                     MacosBundlerKind::Pkg => {
                         MacosPkgBundler::bundle(
@@ -47,6 +50,7 @@ impl<'a> MacosBundler<'a> {
                             target,
                             bundle,
                         )?;
+                        Ok::<(), anyhow::Error>(())
                     }
                     MacosBundlerKind::Dmg => {
                         MacosDmgBundler::bundle(
@@ -56,8 +60,9 @@ impl<'a> MacosBundler<'a> {
                             target,
                             bundle,
                         )?;
+                        Ok::<(), anyhow::Error>(())
                     }
-                }
+                })?;
             }
         }
 

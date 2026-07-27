@@ -5,8 +5,9 @@ use anyhow::Context;
 
 use crate::build_manifest::BuildManifest;
 use crate::bundlers::LinuxBundlerKind;
+use crate::linux_installer::prepare_payload;
 use crate::linux_installer::rpm::{self, RpmSpec};
-use crate::package_metadata::{description, package_name};
+use crate::package_metadata::{description, homepage, license, publisher, summary};
 use crate::platform_manifests::LinuxPlatformManifest;
 use crate::target_manifest::TargetManifest;
 
@@ -32,24 +33,26 @@ impl LinuxRpmBundler {
         fs::create_dir_all(&target_dir)
             .with_context(|| format!("failed to create {}", target_dir.display()))?;
 
-        let package = package_name(&build_manifest.app_name);
-        let output = target_dir.join(format!("{package}-{}-1.rpm", build_manifest.version));
+        let payload = prepare_payload(build_manifest, platform_manifest, target_manifest)?;
+        let output = target_dir.join(format!(
+            "{}-{}-1.rpm",
+            payload.package, build_manifest.version
+        ));
         let description = description(build_manifest);
-        let architecture = if target_manifest.target.starts_with("aarch64-") {
-            "aarch64"
-        } else {
-            "x86_64"
-        };
+        let summary = summary(build_manifest);
         let spec = RpmSpec {
-            package,
+            package: payload.package,
             version: build_manifest.version.clone(),
             release: "1".to_owned(),
             bundled_at: build_manifest.bundled_at.clone(),
-            summary: description.clone(),
+            summary,
             description,
-            architecture: architecture.to_owned(),
-            license: "custom".to_owned(),
-            files: target_manifest.files.clone(),
+            architecture: payload.architecture.to_owned(),
+            license: license(build_manifest),
+            homepage: homepage(build_manifest).map(str::to_owned),
+            publisher: publisher(build_manifest),
+            files: payload.files,
+            generated_files: payload.generated_files,
             associated_files: platform_manifest.associated_files.clone(),
             eulas: platform_manifest.eulas.clone(),
         };

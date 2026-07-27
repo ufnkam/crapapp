@@ -6,6 +6,7 @@ use crate::linux_installer::linux_aur_bundler::LinuxAurBundler;
 use crate::linux_installer::linux_deb_bundler::LinuxDebBundler;
 use crate::linux_installer::linux_rpm_bundler::LinuxRpmBundler;
 use crate::platform_manifests::LinuxPlatformManifest;
+use crate::progress;
 use crate::target_manifest::TargetManifest;
 
 pub struct LinuxBundler<'a> {
@@ -27,18 +28,20 @@ impl<'a> LinuxBundler<'a> {
         }
     }
 
-    pub fn bundle(&self) -> anyhow::Result<()> {
+    pub fn bundle(&self, bundles: &[LinuxBundlerKind]) -> anyhow::Result<()> {
         for target in &self.platform.targets {
-            for bundle in &self.platform.bundle {
-                match bundle {
+            for bundle in bundles {
+                let message = format!("Bundling linux {} {}", target.target, bundle);
+                progress::run(&message, || match bundle {
                     LinuxBundlerKind::Deb => {
                         LinuxDebBundler::bundle(
                             self.build_manifest,
                             self.build_dir,
                             self.platform,
                             target,
-                            &bundle,
+                            bundle,
                         )?;
+                        Ok::<(), anyhow::Error>(())
                     }
                     LinuxBundlerKind::Rpm => {
                         LinuxRpmBundler::bundle(
@@ -46,8 +49,9 @@ impl<'a> LinuxBundler<'a> {
                             self.build_dir,
                             self.platform,
                             target,
-                            &bundle,
+                            bundle,
                         )?;
+                        Ok::<(), anyhow::Error>(())
                     }
                     LinuxBundlerKind::Aur => {
                         LinuxAurBundler::bundle(
@@ -55,10 +59,11 @@ impl<'a> LinuxBundler<'a> {
                             self.build_dir,
                             self.platform,
                             target,
-                            &bundle,
+                            bundle,
                         )?;
+                        Ok::<(), anyhow::Error>(())
                     }
-                }
+                })?;
             }
         }
 

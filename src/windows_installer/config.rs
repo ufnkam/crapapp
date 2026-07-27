@@ -1,8 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-pub const UNINSTALLER_EXE: &str = "uninstall.exe";
-pub const ADD_TO_PATH_VARIABLE: &str = "ADD_TO_PATH";
-
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct PayloadEntry {
     #[serde(default)]
@@ -78,6 +75,9 @@ pub struct InstallerConfig {
     pub publisher: Option<String>,
     #[serde(default)]
     pub bundled_at: String,
+    /// Build target used only while authoring an MSI; never written to setup config.
+    #[serde(skip, default)]
+    pub bundle_target: String,
     #[serde(rename = "variables")]
     pub required_variables: Vec<String>,
     #[serde(default)]
@@ -107,6 +107,7 @@ impl Default for InstallerConfig {
             display_name: None,
             publisher: None,
             bundled_at: String::new(),
+            bundle_target: String::new(),
             required_variables: Vec::new(),
             uninstaller_source: String::new(),
             uninstaller_bytes: &[],
@@ -121,6 +122,12 @@ impl Default for InstallerConfig {
 }
 
 impl InstallerConfig {
+    pub fn allows_install_path_selection(&self) -> bool {
+        self.required_variables
+            .iter()
+            .any(|variable| variable == "INSTALLPATH")
+    }
+
     pub fn install_app_name(&self) -> &str {
         let app_name = self.app_name.trim();
 

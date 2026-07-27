@@ -1,13 +1,14 @@
 use std::collections::BTreeSet;
 use std::fs;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use anyhow::{Context, bail};
 use chrono::{DateTime, TimeZone, Utc};
 use flate2::Compression;
 use flate2::write::GzEncoder;
 
+use crate::linux_installer::{GeneratedFile, install_relative_path};
 use crate::manifest_file::{AssociatedFile, AssociatedFileKind, EulaFile};
 use crate::payload_file::PayloadFile;
 
@@ -16,9 +17,12 @@ pub struct DebSpec {
     pub version: String,
     pub bundled_at: String,
     pub maintainer: String,
+    pub summary: String,
     pub description: String,
+    pub homepage: Option<String>,
     pub architecture: String,
     pub files: Vec<PayloadFile>,
+    pub generated_files: Vec<GeneratedFile>,
     pub associated_files: Vec<AssociatedFile>,
     pub eulas: Vec<EulaFile>,
 }
@@ -55,21 +59,51 @@ fn validate(spec: &DebSpec) -> anyhow::Result<()> {
 
 fn control_archive(spec: &DebSpec) -> anyhow::Result<Vec<u8>> {
     let timestamp = package_timestamp(&spec.bundled_at);
+    let homepage = spec
+        .homepage
+        .as_deref()
+        .filter(|homepage| !homepage.trim().is_empty())
+        .map(|homepage| format!("Homepage: {homepage}\n"))
+        .unwrap_or_default();
     let control = format!(
-        "Package: {}\nVersion: {}\nArchitecture: {}\nMaintainer: {}\nInstalled-Size: {}\nSection: utils\nPriority: optional\nX-Cargo-Crapapp-Bundled-At: {}\nDescription: {}\n",
+        "Package: {}\nVersion: {}\nArchitecture: {}\nMaintainer: {}\nInstalled-Size: {}\nSection: utils\nPriority: optional\n{}X-Cargo-Crapapp-Bundled-At: {}\nDescription: {}\n {}\n",
         spec.package,
         spec.version,
         spec.architecture,
         spec.maintainer,
         installed_size_kbytes(spec)?,
+        homepage,
         spec.bundled_at,
-        spec.description
+        spec.summary,
+        deb_long_description(&spec.description)
     );
 
     let mut tar = Vec::new();
     write_tar_file(&mut tar, "./control", control.as_bytes(), 0o644, timestamp)?;
+    write_tar_file(
+        &mut tar,
+        "./postinst",
+        metadata_cache_refresh_script().as_bytes(),
+        0o755,
+        timestamp,
+    )?;
     finish_tar(&mut tar);
     gzip(&tar)
+}
+
+fn metadata_cache_refresh_script() -> &'static str {
+    r#"#!/bin/sh
+if command -v update-desktop-database >/dev/null 2>&1; then
+  update-desktop-database /usr/share/applications >/dev/null 2>&1 || :
+fi
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+  gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor >/dev/null 2>&1 || :
+fi
+if command -v appstreamcli >/dev/null 2>&1; then
+  appstreamcli refresh-cache --force >/dev/null 2>&1 || :
+fi
+exit 0
+"#
 }
 
 fn data_archive(spec: &DebSpec) -> anyhow::Result<Vec<u8>> {
@@ -80,14 +114,21 @@ fn data_archive(spec: &DebSpec) -> anyhow::Result<Vec<u8>> {
     for file in &spec.files {
         let bytes =
             fs::read(&file.source).with_context(|| format!("failed to read {}", file.source))?;
-        let path = package_path(&file.destination)?;
+        let path = tar_path(&file.destination)?;
         collect_parent_directories(&path, &mut directories);
         let mode = if file.executable { 0o755 } else { 0o644 };
         write_tar_file(&mut tar, &path, &bytes, mode, timestamp)?;
     }
 
+    for file in &spec.generated_files {
+        let path = tar_path(&file.install_path)?;
+        collect_parent_directories(&path, &mut directories);
+        let mode = if file.executable { 0o755 } else { 0o644 };
+        write_tar_file(&mut tar, &path, &file.bytes, mode, timestamp)?;
+    }
+
     for file in &spec.associated_files {
-        let path = package_path(&file.path)?;
+        let path = tar_path(&file.path)?;
         match file.kind {
             AssociatedFileKind::Directory => {
                 collect_parent_directories(&path, &mut directories);
@@ -149,37 +190,22 @@ fn installed_size_kbytes(spec: &DebSpec) -> anyhow::Result<u64> {
             .with_context(|| format!("failed to read metadata for {}", file.source))?
             .len();
     }
+    for file in &spec.generated_files {
+        bytes += file.bytes.len() as u64;
+    }
     Ok(bytes.div_ceil(1024))
 }
 
-fn package_path(path: &str) -> anyhow::Result<String> {
-    if path.trim().is_empty() {
-        bail!("package path must not be empty");
-    }
+fn deb_long_description(description: &str) -> String {
+    description
+        .lines()
+        .map(|line| if line.is_empty() { "." } else { line })
+        .collect::<Vec<_>>()
+        .join("\n ")
+}
 
-    let path = Path::new(path);
-    let mut relative = PathBuf::new();
-    for component in path.components() {
-        match component {
-            std::path::Component::RootDir | std::path::Component::CurDir => {}
-            std::path::Component::Normal(part) => relative.push(part),
-            std::path::Component::ParentDir | std::path::Component::Prefix(_) => {
-                bail!(
-                    "package path {} must not contain parent or prefix components",
-                    path.display()
-                );
-            }
-        }
-    }
-
-    if relative.as_os_str().is_empty() {
-        bail!(
-            "package path {} must not resolve to package root",
-            path.display()
-        );
-    }
-
-    Ok(format!("./{}", relative.display()))
+fn tar_path(path: &str) -> anyhow::Result<String> {
+    Ok(format!("./{}", install_relative_path(path)?))
 }
 
 fn gzip(bytes: &[u8]) -> anyhow::Result<Vec<u8>> {
@@ -349,12 +375,15 @@ mod tests {
                 version: "1.0.0".to_owned(),
                 bundled_at: "2000-01-01T00:00:00Z".to_owned(),
                 maintainer: "ufnkam".to_owned(),
+                summary: "Example App".to_owned(),
                 description: "Example App".to_owned(),
+                homepage: Some("https://example.com".to_owned()),
                 architecture: "amd64".to_owned(),
                 files: vec![PayloadFile::executable(
                     executable.display().to_string(),
                     "/usr/bin/example".to_owned(),
                 )],
+                generated_files: Vec::new(),
                 associated_files: Vec::new(),
                 eulas: Vec::new(),
             },

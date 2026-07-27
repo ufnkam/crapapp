@@ -16,11 +16,8 @@ mod package_metadata;
 mod payload_file;
 mod platform_manifest;
 mod platform_manifests;
+mod progress;
 mod target_manifest;
 pub mod windows_installer;
-
-/// Windows build-script helpers for application binaries.
-#[cfg(feature = "windows")]
-pub use crate::windows_installer::win_api;
 
 pub use cli::run_cli;

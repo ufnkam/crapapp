@@ -6,6 +6,9 @@ pub struct CargoPackage {
     pub name: String,
     pub version: String,
     pub description: Option<String>,
+    pub homepage: Option<String>,
+    pub license: Option<String>,
+    pub license_file: Option<String>,
     pub binaries: Vec<String>,
 }
 
@@ -51,6 +54,9 @@ impl CargoPackage {
             name: root_package.name.to_string(),
             version: root_package.version.to_string(),
             description: root_package.description.clone(),
+            homepage: root_package.homepage.clone(),
+            license: root_package.license.clone(),
+            license_file: root_package.license_file.as_ref().map(ToString::to_string),
             binaries,
         })
     }
