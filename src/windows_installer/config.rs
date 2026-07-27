@@ -1,18 +1,15 @@
 use serde::{Deserialize, Serialize};
 
-pub const UNINSTALLER_EXE: &str = "uninstall.exe";
-pub const ADD_TO_PATH_VARIABLE: &str = "ADD_TO_PATH";
-
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct PayloadEntry {
-    #[serde(skip_serializing, default)]
-    source: Option<String>,
+    #[serde(default)]
+    pub source: Option<String>,
     pub destination: String,
     pub executable: bool,
     #[serde(default)]
-    offset: usize,
+    pub offset: usize,
     #[serde(default)]
-    len: usize,
+    pub len: usize,
     #[serde(skip, default)]
     pub bytes: &'static [u8],
 }
@@ -25,6 +22,7 @@ impl PayloadEntry {
     }
 
     pub fn with_range(mut self, offset: usize, len: usize) -> Self {
+        self.source = None;
         self.offset = offset;
         self.len = len;
         self
@@ -44,6 +42,7 @@ pub struct Shortcut {
     pub target: String,
     pub name: String,
     pub directory: Option<String>,
+    pub icon: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
@@ -74,9 +73,14 @@ pub struct InstallerConfig {
     pub app_version: String,
     pub display_name: Option<String>,
     pub publisher: Option<String>,
+    #[serde(default)]
+    pub bundled_at: String,
+    /// Build target used only while authoring an MSI; never written to setup config.
+    #[serde(skip, default)]
+    pub bundle_target: String,
     #[serde(rename = "variables")]
     pub required_variables: Vec<String>,
-    #[serde(skip_serializing, default)]
+    #[serde(default)]
     pub uninstaller_source: String,
     #[serde(skip, default)]
     pub uninstaller_bytes: &'static [u8],
@@ -102,6 +106,8 @@ impl Default for InstallerConfig {
             app_version: "0.0.0".to_owned(),
             display_name: None,
             publisher: None,
+            bundled_at: String::new(),
+            bundle_target: String::new(),
             required_variables: Vec::new(),
             uninstaller_source: String::new(),
             uninstaller_bytes: &[],
@@ -116,6 +122,12 @@ impl Default for InstallerConfig {
 }
 
 impl InstallerConfig {
+    pub fn allows_install_path_selection(&self) -> bool {
+        self.required_variables
+            .iter()
+            .any(|variable| variable == "INSTALLPATH")
+    }
+
     pub fn install_app_name(&self) -> &str {
         let app_name = self.app_name.trim();
 

@@ -13,18 +13,15 @@ and produce something a user can install without negotiating with five teams and
 producing 2534 Jira tickets.
 
 ## What It Does
-It can: 
-- build configured Cargo packages 
-- collect payload files 
-- generate a`setup.exe` 
-- embed the payload 
-- write uninstall metadata 
-- create optional GUI installer screens with EULAs with acceptance reports etc 
-- create associated app files
-- create Start Menu search shortcuts 
-- and update the current user's `PATH`.
+It can:
 
-Linux and macOS output are not supported yet.
+- build configured Cargo packages and collect payload files;
+- generate Windows `.msi` installers with standard installer UI, Start Menu
+  shortcuts, Add/Remove Programs metadata, EULAs, associated files, and
+  per-user `PATH` entries;
+- create macOS `.app`, `.pkg`, and `.dmg` bundles; and
+- create Linux `.deb`, `.rpm`, and AUR package sources with desktop entries,
+  AppStream metadata, icons, EULAs, and associated files.
 
 ## Should You Use It?
 
@@ -37,14 +34,22 @@ trap and normal packaging tools are politically unavailable.
 cargo crapapp inspect
 cargo crapapp inspect --output json
 cargo crapapp build
+cargo crapapp bundle
+cargo crapapp bundle --no-build
+cargo crapapp bundle --no-build --linux deb aur --windows msi --macos app dmg pkg
 ```
 
-Windows output currently lands in:
+Bundler output currently lands in:
 
 ```text
-.crapapp_build/windows/<target>/setup.exe
+.crapapp_build/windows/<target>/msi/<display-name-or-package-name>.msi
+.crapapp_build/macos/<target>/app/<display-name-or-package-name>.app
+.crapapp_build/macos/<target>/pkg/<display-name-or-package-name>.pkg
+.crapapp_build/macos/<target>/dmg/<display-name-or-package-name>.dmg
+.crapapp_build/linux/<target>/deb/<package-name>.deb
+.crapapp_build/linux/<target>/rpm/<package-name>-<version>-1.rpm
+.crapapp_build/linux/<target>/aur/<package-name>.aur
 ```
 
 Full CLI, `CRAP.toml`, and `libcrapapp` documentation lives in [docs.md](docs.md)
 and is rendered as the crate documentation on docs.rs.
-

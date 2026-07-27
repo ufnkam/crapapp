@@ -1,9 +1,9 @@
 [package]
 name = "cargo-crapapp"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2024"
 description = "Cargo subcommand for building CRAP app installers and self-contained app bundles"
-license = "Apache-2.0"
+license = "MIT"
 readme = "README.md"
 documentation = "https://docs.rs/cargo-crapapp"
 keywords = ["cargo", "packaging", "bundler", "installer", "desktop"]
@@ -32,22 +32,30 @@ path = "src/main.rs"
 anyhow = "1.0.103"
 cargo_metadata = "0.23.1"
 clap = { version = "4.5.40", features = ["derive"] }
-directories = { version = "6.0.0", optional = true }
-iced = { version = "0.14.0", features = ["image-without-codecs"], optional = true }
+flate2 = "1.1.9"
 image = { version = "0.25.10", default-features = false, features = ["ico", "png"] }
 minijinja = "2.12.0"
-rfd = { version = "0.17.2", optional = true }
+quick-xml = "0.41.0"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.150"
+sha1 = "0.10.7"
 strum = { version = "0.28.0", features = ["derive"] }
 strum_macros = "0.28.0"
+tar = "0.4.44"
 toml = "0.8.23"
 usvg = { version = "0.47.0", default-features = false }
+serde-bool = "0.1.4"
+msi = "0.10.0"
+cab = "0.6.0"
+chrono = { version = "0.4.41", default-features = false, features = ["alloc", "clock"] }
+uuid = { version = "1.18.1", features = ["v5"] }
+rpm = { version = "0.25.1", default-features = false, features = ["payload", "gzip-compression"] }
+cfb = "0.14.0"
+editpe = "0.2.3"
 
 [features]
 default = []
-cli = []
-gui = ["dep:directories", "dep:iced", "dep:rfd"]
+dev = []
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62.2", features = ["Win32_System_Com", "Win32_UI_Shell"] }
