@@ -21,6 +21,18 @@ use image::ImageReader;
 pub struct WindowsMsiBundler {}
 
 const DISPLAY_ICON_SIZE: u32 = 256;
+const MSI_PICKER_CARGO_TOML: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/assets/windows-msi-picker/Cargo.toml"
+));
+const MSI_PICKER_CARGO_LOCK: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/assets/windows-msi-picker/Cargo.lock"
+));
+const MSI_PICKER_LIB_RS: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/assets/windows-msi-picker/src/lib.rs"
+));
 
 impl WindowsMsiBundler {
     pub fn bundle(
@@ -106,10 +118,12 @@ fn build_folder_picker_action(build_dir: &Path, target: &str) -> anyhow::Result<
         .join("windows")
         .join(target)
         .join("msi-picker-target");
-    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("assets")
-        .join("windows-msi-picker")
-        .join("Cargo.toml");
+    let source_dir = build_dir
+        .join("windows")
+        .join(target)
+        .join("msi-picker-source");
+    write_folder_picker_crate(&source_dir)?;
+    let manifest = source_dir.join("Cargo.toml");
 
     let status = progress::run(
         &format!("Building Windows folder picker for {target}"),
@@ -143,8 +157,40 @@ fn build_folder_picker_action(build_dir: &Path, target: &str) -> anyhow::Result<
             target_dir.display()
         )
     })?;
+    fs::remove_dir_all(&source_dir).with_context(|| {
+        format!(
+            "failed to remove temporary MSI folder-picker source directory {}",
+            source_dir.display()
+        )
+    })?;
 
     Ok(action)
+}
+
+/// The picker crate is embedded into cargo-crapapp so an installed CLI never
+/// relies on the source directory it was originally compiled from.
+fn write_folder_picker_crate(source_dir: &Path) -> anyhow::Result<()> {
+    if source_dir.exists() {
+        fs::remove_dir_all(source_dir).with_context(|| {
+            format!(
+                "failed to remove temporary MSI folder-picker source directory {}",
+                source_dir.display()
+            )
+        })?;
+    }
+    fs::create_dir_all(source_dir.join("src")).with_context(|| {
+        format!(
+            "failed to create temporary MSI folder-picker source directory {}",
+            source_dir.display()
+        )
+    })?;
+    fs::write(source_dir.join("Cargo.toml"), MSI_PICKER_CARGO_TOML)
+        .context("failed to write temporary MSI folder-picker Cargo.toml")?;
+    fs::write(source_dir.join("Cargo.lock"), MSI_PICKER_CARGO_LOCK)
+        .context("failed to write temporary MSI folder-picker Cargo.lock")?;
+    fs::write(source_dir.join("src/lib.rs"), MSI_PICKER_LIB_RS)
+        .context("failed to write temporary MSI folder-picker source")?;
+    Ok(())
 }
 
 fn artifact_file_stem(build_manifest: &BuildManifest) -> String {
