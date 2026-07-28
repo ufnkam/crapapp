@@ -23,7 +23,7 @@ pub struct WindowsMsiBundler {}
 const DISPLAY_ICON_SIZE: u32 = 256;
 const MSI_PICKER_CARGO_TOML: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/assets/windows-msi-picker/Cargo.toml"
+    "/assets/windows-msi-picker/Cargo.toml.template"
 ));
 const MSI_PICKER_CARGO_LOCK: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
