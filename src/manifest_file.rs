@@ -337,6 +337,23 @@ mod tests {
     }
 
     #[test]
+    fn windows_path_entries_parse() {
+        let manifest = parse_manifest(
+            r#"
+            [windows]
+            targets = ["x86_64-pc-windows-gnu"]
+            path_entries = ["$INSTALLPATH", "$INSTALLPATH/bin"]
+            "#,
+        );
+
+        let windows = manifest.windows.expect("windows platform should exist");
+        assert_eq!(
+            windows.path_entries,
+            vec!["$INSTALLPATH", "$INSTALLPATH/bin"]
+        );
+    }
+
+    #[test]
     fn eula_required_false_parses() {
         let manifest = parse_manifest(
             r#"

@@ -93,6 +93,7 @@ features = ["sqlite"]
 [windows]
 targets = ["x86_64-pc-windows-gnu"]
 install_path = "$INSTALLPATH"
+path_entries = ["$INSTALLPATH", "$INSTALLPATH/bin"]
 bundle = "msi"
 display_icon = "assets/app.ico"
 files = [
@@ -260,6 +261,11 @@ Fields:
   under `install_path` when `install_path` is present. If present, Cargo
   binaries are installed under that directory relative to `install_path`, unless
   the path is already absolute/symbolic in the manifest.
+- `path_entries`: optional array of directories the MSI adds to the current
+  user's `PATH`. Each entry must start with `$INSTALLPATH`; use
+  `$INSTALLPATH` for the installation root and `$INSTALLPATH/bin` for a
+  subdirectory. It defaults to `["$INSTALLPATH"]` when omitted or empty. The
+  installer shows an enabled **Add to PATH** checkbox so the user can opt out.
 - `files`: optional array of payload file mappings.
 - `associated_files`: optional array of associated file mappings.
 - `eulas`: optional array of EULA files.
@@ -287,8 +293,9 @@ native Windows folder picker.
 
 Windows Installer resolves `INSTALLPATH` through its installation-directory UI
 and `HOMEPATH` to the current user's home directory. `ADD_TO_PATH` defaults to
-`1`; executable payload directories are added to the current user's `PATH`
-unless disabled through an MSI property transform or command-line property.
+`1`; the configured `path_entries` are appended to the current user's `PATH`
+unless the user clears the installer checkbox or an MSI property transform or
+command-line property disables it.
 
 ### `[macos]`
 
