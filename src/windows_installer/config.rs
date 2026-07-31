@@ -85,6 +85,9 @@ pub struct InstallerConfig {
     #[serde(skip, default)]
     pub uninstaller_bytes: &'static [u8],
     pub payload: Vec<PayloadEntry>,
+    /// MSI directories to add to PATH, expressed relative to `$INSTALLPATH`.
+    #[serde(default)]
+    pub path_entries: Vec<String>,
     pub display_icon: Option<String>,
     pub display_icon_rgba: Option<DisplayIcon>,
     #[serde(default)]
@@ -112,6 +115,7 @@ impl Default for InstallerConfig {
             uninstaller_source: String::new(),
             uninstaller_bytes: &[],
             payload: Vec::new(),
+            path_entries: Vec::new(),
             display_icon: None,
             display_icon_rgba: None,
             associated_files: Vec::new(),

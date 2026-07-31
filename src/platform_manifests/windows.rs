@@ -27,6 +27,10 @@ pub struct WindowsPlatformManifest<Target = WindowsTarget> {
     pub bundle: Vec<WindowsBundlerKind>,
     pub install_path: Option<String>,
     pub bin_dir: Option<String>,
+    /// Directories to append to PATH from the MSI. An empty list defaults to
+    /// the installation root.
+    #[serde(default)]
+    pub path_entries: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub files: Vec<FileMapping>,
     #[serde(default)]
@@ -96,6 +100,7 @@ impl WindowsPlatformManifest {
             bundle: self.bundles(),
             install_path: self.install_path.clone(),
             bin_dir: self.bin_dir.clone(),
+            path_entries: self.path_entries.clone(),
             files: Vec::new(),
             associated_files: self.associated_files.clone(),
             eulas: self.eulas.clone(),

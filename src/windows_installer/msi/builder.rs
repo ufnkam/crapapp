@@ -4,14 +4,14 @@ use std::io::{Read, Seek, Write};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, anyhow, bail};
-use msi::{CodePage, Column, Insert, Language, Package, PackageType, Value};
+use msi::{CodePage, Column, Language, Package, PackageType, Value};
 use uuid::Uuid;
 
-const DEFAULT_MANUFACTURER: &str = "unknown";
+#[cfg(test)]
 const COMPONENT_64BIT: i32 = 256;
 const COMPONENT_REGISTRY_KEYPATH: i32 = 4;
 const HKCU: i32 = 1;
-const ADD_TO_PATH_PROPERTY: &str = "ADD_TO_PATH";
+pub(super) const ADD_TO_PATH_PROPERTY: &str = "ADD_TO_PATH";
 const DIALOG_WIDTH: i32 = 520;
 #[cfg(test)]
 const DIALOG_HEIGHT: i32 = 360;
@@ -19,19 +19,15 @@ const FOOTER_LINE_Y: i32 = 316;
 const FOOTER_BUTTON_Y: i32 = 328;
 const BUTTON_WIDTH: i32 = 70;
 const BUTTON_HEIGHT: i32 = 22;
-const BACK_BUTTON_X: i32 = 270;
-const CANCEL_BUTTON_X: i32 = 348;
-const NEXT_BUTTON_X: i32 = 426;
+pub(super) const BACK_BUTTON_X: i32 = 270;
+pub(super) const CANCEL_BUTTON_X: i32 = 348;
+pub(super) const NEXT_BUTTON_X: i32 = 426;
 
+use super::{
+    database::{create_table, insert},
+    identity,
+};
 use crate::windows_installer::{AssociatedFileKind, Eula, InstallerConfig};
-
-fn display_name(config: &InstallerConfig) -> &str {
-    config.display_name.as_deref().unwrap_or(&config.app_name)
-}
-
-fn manufacturer(config: &InstallerConfig) -> &str {
-    config.publisher_name().unwrap_or(DEFAULT_MANUFACTURER)
-}
 
 pub fn build(
     plan: &InstallerConfig,
@@ -40,8 +36,8 @@ pub fn build(
     display_icon_source: Option<&str>,
 ) -> anyhow::Result<()> {
     validate(plan)?;
-    let display_name = display_name(plan);
-    let manufacturer = manufacturer(plan);
+    let display_name = identity::display_name(plan);
+    let manufacturer = identity::manufacturer(plan);
 
     if let Some(parent) = output.parent() {
         fs::create_dir_all(parent)
@@ -74,19 +70,21 @@ pub fn build(
         .set_keywords(&["Installer", "MSI", "Database"].map(ToString::to_string));
     package
         .summary_info_mut()
-        .set_arch(msi_platform(&plan.bundle_target));
+        .set_arch(identity::msi_platform(&plan.bundle_target));
     package
         .summary_info_mut()
         .set_languages(&[Language::from_code(1033)]);
     package
         .summary_info_mut()
-        .set_page_count(msi_page_count(&plan.bundle_target));
+        .set_page_count(identity::msi_page_count(&plan.bundle_target));
     package.summary_info_mut().set_word_count(10);
     package.summary_info_mut().set_doc_security(0);
     package
         .summary_info_mut()
         .set_creating_application("cargo-crapapp");
-    package.summary_info_mut().set_uuid(package_code(plan));
+    package
+        .summary_info_mut()
+        .set_uuid(identity::package_code(plan));
 
     let mut directory_ids = DirectoryIds::default();
     let files = msi_files(plan, &mut directory_ids)?;
@@ -94,8 +92,8 @@ pub fn build(
     let shortcut_rows = shortcuts(plan, &files)?;
     let icons = icons(plan, &files, &shortcut_rows, display_icon_source)?;
     let eulas = plan.eulas.clone();
-    let path_updates = path_updates(&files);
-    let cabinet_stream = cabinet_stream_name(&plan.app_name);
+    let path_updates = path_updates(plan, &mut directory_ids)?;
+    let cabinet_stream = identity::cabinet_stream_name(&plan.app_name);
     create_schema(&mut package)?;
     insert_rows(
         &mut package,
@@ -133,27 +131,6 @@ fn validate(plan: &InstallerConfig) -> anyhow::Result<()> {
     }
 
     Ok(())
-}
-
-fn cabinet_stream_name(package: &str) -> String {
-    let mut name = package
-        .chars()
-        .map(|character| {
-            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_') {
-                character
-            } else {
-                '-'
-            }
-        })
-        .collect::<String>()
-        .trim_matches('-')
-        .to_owned();
-
-    if name.is_empty() {
-        name.push_str("app");
-    }
-    name.push_str(".cab");
-    name
 }
 
 #[derive(Clone, Debug)]
@@ -480,6 +457,17 @@ fn create_schema<W: Read + Write + Seek>(package: &mut Package<W>) -> anyhow::Re
     )?;
     create_table(
         package,
+        "RemoveFile",
+        vec![
+            Column::build("FileKey").primary_key().id_string(72),
+            Column::build("Component_").id_string(72),
+            Column::build("FileName").nullable().formatted_string(255),
+            Column::build("DirProperty").id_string(72),
+            Column::build("InstallMode").int16(),
+        ],
+    )?;
+    create_table(
+        package,
         "Shortcut",
         vec![
             Column::build("Shortcut").primary_key().id_string(72),
@@ -675,19 +663,6 @@ fn create_schema<W: Read + Write + Seek>(package: &mut Package<W>) -> anyhow::Re
     Ok(())
 }
 
-fn create_table<W>(
-    package: &mut Package<W>,
-    table: &str,
-    columns: Vec<Column>,
-) -> anyhow::Result<()>
-where
-    W: Read + Write + Seek,
-{
-    package
-        .create_table(table, columns)
-        .with_context(|| format!("failed to create MSI table {table}"))
-}
-
 #[allow(clippy::too_many_arguments)]
 fn insert_rows<W: Read + Write + Seek>(
     package: &mut Package<W>,
@@ -701,21 +676,27 @@ fn insert_rows<W: Read + Write + Seek>(
     path_updates: &[String],
     folder_picker_action: &[u8],
 ) -> anyhow::Result<()> {
-    let manufacturer = manufacturer(plan);
-    let display_name = display_name(plan);
+    let manufacturer = identity::manufacturer(plan);
+    let display_name = identity::display_name(plan);
 
     let mut property_rows = vec![
         row([
             "ProductCode",
-            &product_code(plan).braced().to_string().to_ascii_uppercase(),
+            &identity::product_code(plan)
+                .braced()
+                .to_string()
+                .to_ascii_uppercase(),
         ]),
         row(["ProductName", display_name]),
-        row(["ProductVersion", &msi_version(&plan.app_version)]),
+        row(["ProductVersion", &identity::msi_version(&plan.app_version)]),
         row(["ProductLanguage", "1033"]),
         row(["Manufacturer", manufacturer]),
         row([
             "UpgradeCode",
-            &upgrade_code(plan).braced().to_string().to_ascii_uppercase(),
+            &identity::upgrade_code(plan)
+                .braced()
+                .to_string()
+                .to_ascii_uppercase(),
         ]),
         row(["ALLUSERS", "2"]),
         row(["MSIINSTALLPERUSER", "1"]),
@@ -773,7 +754,7 @@ fn insert_rows<W: Read + Write + Seek>(
         ]],
     )?;
 
-    let component_attributes = component_attributes(&plan.bundle_target);
+    let component_attributes = identity::component_attributes(&plan.bundle_target);
     let registry_component_attributes = component_attributes | COMPONENT_REGISTRY_KEYPATH;
     let mut component_rows: Vec<Vec<Value>> = files
         .iter()
@@ -781,7 +762,7 @@ fn insert_rows<W: Read + Write + Seek>(
             vec![
                 Value::from(file.component.as_str()),
                 Value::from(
-                    component_code(plan, file)
+                    identity::component_code(plan, &file.id)
                         .braced()
                         .to_string()
                         .to_ascii_uppercase()
@@ -828,7 +809,7 @@ fn insert_rows<W: Read + Write + Seek>(
         vec![
             Value::from(shortcut.component.as_str()),
             Value::from(
-                shortcut_component_code(plan, shortcut)
+                identity::shortcut_component_code(plan, &shortcut.id)
                     .braced()
                     .to_string()
                     .to_ascii_uppercase()
@@ -844,7 +825,7 @@ fn insert_rows<W: Read + Write + Seek>(
         vec![
             Value::from(path_update_component(index).as_str()),
             Value::from(
-                path_component_code(plan, index)
+                identity::path_component_code(plan, &path_update_id(index))
                     .braced()
                     .to_string()
                     .to_ascii_uppercase()
@@ -928,6 +909,17 @@ fn insert_rows<W: Read + Write + Seek>(
     if !create_folder_rows.is_empty() {
         insert(package, "CreateFolder", create_folder_rows)?;
     }
+    insert(
+        package,
+        "RemoveFile",
+        vec![vec![
+            Value::from("RemoveInstallFolder"),
+            Value::from(cleanup_component(files, plan, shortcuts, path_updates)?.as_str()),
+            Value::Null,
+            Value::from("INSTALLFOLDER"),
+            Value::Int(2),
+        ]],
+    )?;
     if !shortcuts.is_empty() {
         insert(
             package,
@@ -1063,7 +1055,11 @@ fn insert_rows<W: Read + Write + Seek>(
     )?;
     insert(package, "TextStyle", super::tables::TextStyle::rows())?;
     insert(package, "Dialog", super::screens::dialog_rows(plan, eulas))?;
-    insert(package, "Control", control_rows(plan, eulas, path_updates))?;
+    insert(
+        package,
+        "Control",
+        super::ui::control_rows(plan, eulas, path_updates),
+    )?;
     insert(package, "ControlEvent", control_event_rows(plan, eulas))?;
     let control_conditions = control_condition_rows(eulas);
     if !control_conditions.is_empty() {
@@ -1232,174 +1228,7 @@ fn display_name_from_msi_filename(name: &str) -> &str {
         .unwrap_or(name)
 }
 
-fn control_rows(
-    plan: &InstallerConfig,
-    eulas: &[Eula],
-    path_updates: &[String],
-) -> Vec<Vec<Value>> {
-    let display_name = display_name(plan);
-    let welcome_title = format!("Welcome to the {display_name} Setup Wizard");
-    let welcome_body = format!(
-        "\nThis wizard will install {} {} on your computer.",
-        display_name, plan.app_version,
-    );
-    let install_dir_title = format!("Choose where to install {display_name}");
-    let install_dir_body = "Choose the directory to where application will be installed.";
-    let ready_title = format!("Ready to install {display_name}");
-    let ready_body = "Click Install to begin installation.";
-    let exit_title = format!("Completed the Setup Wizard for {display_name}");
-
-    let mut rows = vec![
-        title_control("WelcomeDlg", "Title", 24, 24, 472, 40, &welcome_title),
-        text_control("WelcomeDlg", "Body", 24, 82, 472, 80, &welcome_body),
-        line_control("WelcomeDlg"),
-        footer_button("WelcomeDlg", "Cancel", CANCEL_BUTTON_X, "Cancel"),
-        footer_button("WelcomeDlg", "Next", NEXT_BUTTON_X, "Next"),
-        title_control(
-            "InstallDirDlg",
-            "Title",
-            24,
-            24,
-            472,
-            40,
-            &install_dir_title,
-        ),
-        text_control("InstallDirDlg", "Body", 24, 72, 472, 32, install_dir_body),
-        heading_control(
-            "InstallDirDlg",
-            "PathLabel",
-            44,
-            122,
-            432,
-            18,
-            "Installation folder",
-        ),
-        edit_control(
-            "InstallDirDlg",
-            "PathEdit",
-            44,
-            150,
-            344,
-            18,
-            "INSTALLFOLDER",
-        ),
-        button_control("InstallDirDlg", "Browse", 396, 148, 80, 22, "Browse..."),
-        checkbox_control(
-            "InstallDirDlg",
-            "AddToPath",
-            44,
-            198,
-            432,
-            20,
-            ADD_TO_PATH_PROPERTY,
-            "Add to PATH",
-            !path_updates.is_empty(),
-        ),
-        line_control("InstallDirDlg"),
-        footer_button("InstallDirDlg", "Back", BACK_BUTTON_X, "Back"),
-        footer_button("InstallDirDlg", "Cancel", CANCEL_BUTTON_X, "Cancel"),
-        footer_button("InstallDirDlg", "Next", NEXT_BUTTON_X, "Next"),
-        title_control("VerifyReadyDlg", "Title", 24, 24, 472, 40, &ready_title),
-        text_control("VerifyReadyDlg", "Body", 24, 82, 472, 60, ready_body),
-        line_control("VerifyReadyDlg"),
-        footer_button("VerifyReadyDlg", "Back", BACK_BUTTON_X, "Back"),
-        footer_button("VerifyReadyDlg", "Cancel", CANCEL_BUTTON_X, "Cancel"),
-        footer_button("VerifyReadyDlg", "Install", NEXT_BUTTON_X, "Install"),
-        title_control(
-            "ProgressDlg",
-            "Title",
-            24,
-            24,
-            472,
-            40,
-            &format!("Installing {display_name}"),
-        ),
-        text_control(
-            "ProgressDlg",
-            "Version",
-            24,
-            78,
-            472,
-            22,
-            &format!("Version {}", plan.app_version),
-        ),
-        text_control(
-            "ProgressDlg",
-            "ActionText",
-            24,
-            122,
-            472,
-            24,
-            "Preparing installation...",
-        ),
-        control_row(
-            "ProgressDlg",
-            "Progress",
-            "ProgressBar",
-            24,
-            158,
-            472,
-            18,
-            1,
-            None,
-            None,
-        ),
-        line_control("ProgressDlg"),
-        footer_button("ProgressDlg", "Cancel", NEXT_BUTTON_X, "Cancel"),
-        title_control("ExitDlg", "Title", 24, 24, 472, 40, &exit_title),
-        text_control(
-            "ExitDlg",
-            "Body",
-            24,
-            82,
-            472,
-            60,
-            "Installation completed successfully.",
-        ),
-        line_control("ExitDlg"),
-        footer_button("ExitDlg", "Finish", NEXT_BUTTON_X, "Finish"),
-    ];
-
-    for (index, eula) in eulas.iter().enumerate() {
-        let position = format!("License agreement {} of {}", index + 1, eulas.len());
-        let dialog = license_dialog_id(index);
-        rows.extend([
-            title_control(&dialog, "Title", 24, 20, 472, 34, &position),
-            heading_control(&dialog, "Name", 24, 58, 472, 20, &eula.name),
-            control_row(
-                &dialog,
-                "LicenseText",
-                "ScrollableText",
-                24,
-                86,
-                472,
-                174,
-                7,
-                None,
-                Some(&eula_rtf(&eula.text)),
-            ),
-            line_control(&dialog),
-            footer_button(&dialog, "Back", BACK_BUTTON_X, "Back"),
-            footer_button(&dialog, "Cancel", CANCEL_BUTTON_X, "Cancel"),
-            footer_button(&dialog, "Next", NEXT_BUTTON_X, "Next"),
-        ]);
-        rows.push(checkbox_control(
-            &dialog,
-            "Accept",
-            24,
-            272,
-            472,
-            22,
-            &eula_property(index),
-            &format!("I accept {}", eula.name),
-            true,
-        ));
-    }
-
-    rows
-}
-
-fn text_control(
+pub(super) fn text_control(
     dialog: &str,
     control: &str,
     x: i32,
@@ -1422,7 +1251,7 @@ fn text_control(
     )
 }
 
-fn title_control(
+pub(super) fn title_control(
     dialog: &str,
     control: &str,
     x: i32,
@@ -1442,7 +1271,7 @@ fn title_control(
     )
 }
 
-fn heading_control(
+pub(super) fn heading_control(
     dialog: &str,
     control: &str,
     x: i32,
@@ -1462,7 +1291,7 @@ fn heading_control(
     )
 }
 
-fn line_control(dialog: &str) -> Vec<Value> {
+pub(super) fn line_control(dialog: &str) -> Vec<Value> {
     control_row(
         dialog,
         "BottomLine",
@@ -1477,7 +1306,7 @@ fn line_control(dialog: &str) -> Vec<Value> {
     )
 }
 
-fn button_control(
+pub(super) fn button_control(
     dialog: &str,
     control: &str,
     x: i32,
@@ -1500,7 +1329,7 @@ fn button_control(
     )
 }
 
-fn footer_button(dialog: &str, control: &str, x: i32, text: &str) -> Vec<Value> {
+pub(super) fn footer_button(dialog: &str, control: &str, x: i32, text: &str) -> Vec<Value> {
     button_control(
         dialog,
         control,
@@ -1513,7 +1342,7 @@ fn footer_button(dialog: &str, control: &str, x: i32, text: &str) -> Vec<Value> 
 }
 
 #[allow(clippy::too_many_arguments)]
-fn checkbox_control(
+pub(super) fn checkbox_control(
     dialog: &str,
     control: &str,
     x: i32,
@@ -1538,7 +1367,7 @@ fn checkbox_control(
     )
 }
 
-fn edit_control(
+pub(super) fn edit_control(
     dialog: &str,
     control: &str,
     x: i32,
@@ -1562,7 +1391,7 @@ fn edit_control(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn control_row(
+pub(super) fn control_row(
     dialog: &str,
     control: &str,
     control_type: &str,
@@ -1821,16 +1650,6 @@ fn control_condition_rows(eulas: &[Eula]) -> Vec<Vec<Value>> {
     rows
 }
 
-fn insert<W: Read + Write + Seek>(
-    package: &mut Package<W>,
-    table: &str,
-    rows: Vec<Vec<Value>>,
-) -> anyhow::Result<()> {
-    package
-        .insert_rows(Insert::into(table).rows(rows))
-        .with_context(|| format!("failed to insert MSI table {table} rows"))
-}
-
 fn row(values: [&str; 2]) -> Vec<Value> {
     values.into_iter().map(Value::from).collect()
 }
@@ -1856,12 +1675,12 @@ fn shortcuts(
         let directory = shortcut
             .directory
             .as_deref()
-            .map(|directory| format!("ShortcutDir{}", identifier(directory)))
+            .map(|directory| format!("ShortcutDir{}", identity::identifier(directory)))
             .unwrap_or_else(|| "ProgramMenuFolder".to_owned());
         let directory_name = shortcut
             .directory
             .clone()
-            .unwrap_or_else(|| display_name(plan).to_owned());
+            .unwrap_or_else(|| identity::display_name(plan).to_owned());
         let icon = shortcut
             .icon
             .as_deref()
@@ -1933,7 +1752,7 @@ fn shortcut_icon_id(icon: &str, files: &[PackageFile]) -> anyhow::Result<String>
 }
 
 fn shortcut_icon_id_from_file(file: &PackageFile) -> String {
-    format!("Icon{}", identifier(&file.id))
+    format!("Icon{}", identity::identifier(&file.id))
 }
 
 fn installed_file_source(destination: &str, files: &[PackageFile]) -> Option<PathBuf> {
@@ -1944,15 +1763,15 @@ fn installed_file_source(destination: &str, files: &[PackageFile]) -> Option<Pat
         .map(|file| file.source.clone())
 }
 
-fn license_dialog_id(index: usize) -> String {
+pub(super) fn license_dialog_id(index: usize) -> String {
     format!("LicenseDlg{}", index + 1)
 }
 
-fn eula_property(index: usize) -> String {
+pub(super) fn eula_property(index: usize) -> String {
     format!("EULA_ACCEPTED_{}", index + 1)
 }
 
-fn eula_rtf(text: &str) -> String {
+pub(super) fn eula_rtf(text: &str) -> String {
     if text.trim_start().starts_with("{\\rtf") {
         return text.to_owned();
     }
@@ -1982,24 +1801,48 @@ fn eula_rtf(text: &str) -> String {
     output
 }
 
-fn path_updates(files: &[PackageFile]) -> Vec<String> {
-    let mut directories = Vec::<String>::new();
-    for file in files
-        .iter()
-        .filter(|file| file.directory_root == "INSTALLFOLDER")
-        .filter(|file| {
-            file.install_path
-                .extension()
-                .and_then(|extension| extension.to_str())
-                .is_some_and(|extension| extension.eq_ignore_ascii_case("exe"))
-        })
-    {
-        if !directories.contains(&file.directory) {
-            directories.push(file.directory.clone());
+fn path_updates(
+    plan: &InstallerConfig,
+    directories: &mut DirectoryIds,
+) -> anyhow::Result<Vec<String>> {
+    let entries = if plan.path_entries.is_empty() {
+        vec!["$INSTALLPATH"]
+    } else {
+        plan.path_entries.iter().map(String::as_str).collect()
+    };
+    let mut updates = Vec::with_capacity(entries.len());
+
+    for entry in entries {
+        let relative = path_entry_relative_path(entry)?;
+        let directory = directories.id_for("INSTALLFOLDER", &relative)?;
+        if !updates.contains(&directory) {
+            updates.push(directory);
         }
     }
 
-    directories
+    Ok(updates)
+}
+
+fn path_entry_relative_path(entry: &str) -> anyhow::Result<PathBuf> {
+    let Some(relative) = entry.strip_prefix("$INSTALLPATH") else {
+        bail!("Windows path entry {entry} must start with $INSTALLPATH");
+    };
+    if relative.contains('$') || relative.contains('%') {
+        bail!("Windows path entry {entry} contains unsupported variables");
+    }
+
+    let mut output = PathBuf::new();
+    for component in Path::new(relative).components() {
+        match component {
+            std::path::Component::RootDir | std::path::Component::CurDir => {}
+            std::path::Component::Normal(part) => output.push(part),
+            std::path::Component::ParentDir | std::path::Component::Prefix(_) => {
+                bail!("Windows path entry {entry} must not contain parent or prefix components");
+            }
+        }
+    }
+
+    Ok(output)
 }
 
 fn environment_rows(path_updates: &[String]) -> Vec<Vec<Value>> {
@@ -2128,123 +1971,13 @@ fn cleanup_component<'a>(
     Err(anyhow!("MSI has no component to own registry cleanup"))
 }
 
-fn identifier(value: &str) -> String {
-    let mut id = String::new();
-    for character in value.chars() {
-        if character.is_ascii_alphanumeric() {
-            id.push(character);
-        }
-    }
-
-    if id.is_empty() { "Item".to_owned() } else { id }
-}
-
-fn package_code(plan: &InstallerConfig) -> Uuid {
-    Uuid::new_v5(
-        &Uuid::NAMESPACE_URL,
-        format!(
-            "cargo-crapapp:msi:v3:package:{}:{}:{}:{}",
-            plan.app_name, plan.app_version, plan.bundle_target, plan.bundled_at
-        )
-        .as_bytes(),
-    )
-}
-
-fn product_code(plan: &InstallerConfig) -> Uuid {
-    Uuid::new_v5(
-        &Uuid::NAMESPACE_URL,
-        format!(
-            "cargo-crapapp:msi:v2:product:{}:{}:{}",
-            plan.app_name, plan.app_version, plan.bundle_target
-        )
-        .as_bytes(),
-    )
-}
-
-fn upgrade_code(plan: &InstallerConfig) -> Uuid {
-    Uuid::new_v5(
-        &Uuid::NAMESPACE_URL,
-        format!("cargo-crapapp:msi:upgrade:{}", plan.app_name).as_bytes(),
-    )
-}
-
-fn component_code(plan: &InstallerConfig, file: &PackageFile) -> Uuid {
-    Uuid::new_v5(
-        &Uuid::NAMESPACE_URL,
-        format!(
-            "cargo-crapapp:msi:v2:component:{}:{}:{}:{}",
-            plan.app_name, plan.app_version, plan.bundle_target, file.id
-        )
-        .as_bytes(),
-    )
-}
-
-fn shortcut_component_code(plan: &InstallerConfig, shortcut: &ShortcutComponent) -> Uuid {
-    Uuid::new_v5(
-        &Uuid::NAMESPACE_URL,
-        format!(
-            "cargo-crapapp:msi:v2:shortcut-component:{}:{}:{}:{}",
-            plan.app_name, plan.app_version, plan.bundle_target, shortcut.id
-        )
-        .as_bytes(),
-    )
-}
-
-fn path_component_code(plan: &InstallerConfig, index: usize) -> Uuid {
-    Uuid::new_v5(
-        &Uuid::NAMESPACE_URL,
-        format!(
-            "cargo-crapapp:msi:v2:path-component:{}:{}:{}:{}",
-            plan.app_name,
-            plan.app_version,
-            plan.bundle_target,
-            path_update_id(index)
-        )
-        .as_bytes(),
-    )
-}
-
-fn msi_version(version: &str) -> String {
-    let mut parts = version.split('.').take(3).collect::<Vec<_>>();
-    while parts.len() < 3 {
-        parts.push("0");
-    }
-    parts.join(".")
-}
-
-fn msi_platform(target: &str) -> &'static str {
-    match target.split_once('-').map(|(architecture, _)| architecture) {
-        Some("aarch64") => "Arm64",
-        Some("x86_64") => "x64",
-        _ => "Intel",
-    }
-}
-
-fn msi_page_count(target: &str) -> i32 {
-    if target.starts_with("aarch64-") {
-        500
-    } else if target.starts_with("x86_64-") {
-        200
-    } else {
-        100
-    }
-}
-
-fn component_attributes(target: &str) -> i32 {
-    if target.starts_with("aarch64-") || target.starts_with("x86_64-") {
-        COMPONENT_64BIT
-    } else {
-        0
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::fs;
 
     use msi::{Expr, Select};
 
-    use super::control_event_rows;
+    use super::{DirectoryIds, control_event_rows, path_updates};
     use crate::windows_installer::{
         AssociatedFile, AssociatedFileKind, Eula, InstallerConfig, PayloadEntry, Shortcut,
         msi::build,
@@ -2283,6 +2016,41 @@ mod tests {
             len: 0,
             bytes: &[],
         }
+    }
+
+    #[test]
+    fn path_entries_default_to_the_installation_root() {
+        let plan = InstallerConfig::default();
+        let mut directories = DirectoryIds::default();
+
+        assert_eq!(
+            path_updates(&plan, &mut directories).expect("default PATH entry should resolve"),
+            vec!["INSTALLFOLDER"]
+        );
+    }
+
+    #[test]
+    fn path_entries_support_installpath_subdirectories() {
+        let plan = InstallerConfig {
+            path_entries: vec!["$INSTALLPATH".to_owned(), "$INSTALLPATH/bin".to_owned()],
+            ..Default::default()
+        };
+        let mut directories = DirectoryIds::default();
+
+        assert_eq!(
+            path_updates(&plan, &mut directories).expect("PATH entries should resolve"),
+            vec!["INSTALLFOLDER", "Dir1"]
+        );
+    }
+
+    #[test]
+    fn path_entries_reject_paths_outside_the_installation_root() {
+        let plan = InstallerConfig {
+            path_entries: vec!["C:/tools".to_owned()],
+            ..Default::default()
+        };
+
+        assert!(path_updates(&plan, &mut DirectoryIds::default()).is_err());
     }
 
     #[test]
@@ -2391,6 +2159,7 @@ mod tests {
         assert!(package.has_table("Shortcut"));
         assert!(package.has_table("Icon"));
         assert!(package.has_table("CreateFolder"));
+        assert!(package.has_table("RemoveFile"));
         assert!(package.has_table("InstallUISequence"));
         assert!(package.has_table("Dialog"));
         assert!(package.has_table("Control"));
@@ -2703,6 +2472,38 @@ mod tests {
                 .unwrap()
                 .len(),
             1
+        );
+        let path_entry = package
+            .select_rows(
+                Select::table("Environment")
+                    .with(Expr::col("Environment").eq(Expr::string("PathEntry1"))),
+            )
+            .unwrap()
+            .next()
+            .expect("default installation-root PATH entry should exist");
+        assert_eq!(path_entry["Value"].as_str(), Some("[~];[INSTALLFOLDER]"));
+        assert_eq!(
+            package
+                .select_rows(
+                    Select::table("InstallExecuteSequence")
+                        .with(Expr::col("Action").eq(Expr::string("WriteEnvironmentStrings")),),
+                )
+                .unwrap()
+                .len(),
+            1,
+            "the Environment table must be executed during install and uninstall"
+        );
+        assert_eq!(
+            package
+                .select_rows(
+                    Select::table("RemoveFile")
+                        .with(Expr::col("FileKey").eq(Expr::string("RemoveInstallFolder"))),
+                )
+                .unwrap()
+                .next()
+                .and_then(|row| row["DirProperty"].as_str().map(str::to_owned))
+                .as_deref(),
+            Some("INSTALLFOLDER")
         );
         assert!(
             package

@@ -13,6 +13,7 @@ targets = [
     "x86_64-pc-windows-gnu",
 ]
 install_path = "$INSTALLPATH"
+path_entries = ["$INSTALLPATH"]
 files = [
     { source = "Cargo.toml", destination = "manifests/Cargo.toml" },
     { source = "some_assets", destination = "some_assets" },

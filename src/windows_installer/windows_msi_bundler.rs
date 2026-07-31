@@ -214,7 +214,7 @@ fn prepare_windows_bundle(
         publisher: build_manifest.build.publisher.clone(),
         bundled_at: build_manifest.bundled_at.clone(),
         bundle_target: target.target.clone(),
-        required_variables: platform.variables.iter().map(ToString::to_string).collect(),
+        required_variables: required_variables(platform),
         uninstaller_source: String::new(),
         uninstaller_bytes: &[],
         payload: target
@@ -222,6 +222,7 @@ fn prepare_windows_bundle(
             .iter()
             .map(payload_entry)
             .collect::<anyhow::Result<_>>()?,
+        path_entries: platform.path_entries.clone(),
         display_icon: platform.display_icon.clone(),
         display_icon_rgba: display_icon(platform.display_icon_source.as_deref())?,
         associated_files: platform
@@ -236,6 +237,22 @@ fn prepare_windows_bundle(
             .map(eula)
             .collect::<anyhow::Result<_>>()?,
     })
+}
+
+fn required_variables(platform: &WindowsPlatformManifest<TargetManifest>) -> Vec<String> {
+    let mut variables = platform
+        .variables
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+
+    // PATH entries are based on the selected MSI installation directory even
+    // when the payload itself did not explicitly mention `$INSTALLPATH`.
+    if !variables.iter().any(|variable| variable == "INSTALLPATH") {
+        variables.push("INSTALLPATH".to_owned());
+    }
+
+    variables
 }
 
 fn payload_entry(file: &PayloadFile) -> anyhow::Result<PayloadEntry> {
