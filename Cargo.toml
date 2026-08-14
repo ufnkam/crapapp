@@ -1,6 +1,6 @@
 [package]
 name = "cargo-crapapp"
-version = "0.4.2"
+version = "0.4.3"
 edition = "2024"
 description = "Cargo subcommand for building CRAP app installers and self-contained app bundles"
 license = "MIT"
@@ -26,9 +26,9 @@ include = [
 ]
 
 [workspace]
-members = ["example"]
+members = []
 default-members = ["."]
-exclude = ["example/.crapapp_build"]
+exclude = ["example"]
 resolver = "3"
 
 [lib]

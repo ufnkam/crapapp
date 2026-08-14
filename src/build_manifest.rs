@@ -26,7 +26,11 @@ pub struct BuildManifest {
 
 impl BuildManifest {
     pub fn from_crap_manifest(manifest: &CrapManifest) -> Result<Self> {
-        let cargo_package = CargoPackage::load()?;
+        let selected_packages = manifest
+            .build
+            .as_ref()
+            .map_or(&[][..], |build| build.packages.as_slice());
+        let cargo_package = CargoPackage::load(selected_packages)?;
         let mut platforms = Vec::new();
 
         for platform in manifest.platforms() {

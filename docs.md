@@ -1,4 +1,4 @@
-# crapapp 
+# crapapp
 
 Crapapp is a cargo plugin for bundling Rust desktop apps from `CRAP.toml` without external
 dependencies like wixl or nsis.
@@ -182,9 +182,12 @@ Fields:
   Linux packages. If omitted, Cargo's package `license-file` is used when
   available. Use this alongside `license`: the former supplies the exact legal
   text, while the latter supplies its SPDX identifier.
-- `packages`: optional array of strings. Each entry is passed to Cargo as a
-  selected package. If missing or empty, cargo-crapapp does not pass package
-  selection flags.
+- `packages`: optional array containing the application package name. The
+  selected package supplies the application metadata and binary targets, and is
+  passed to Cargo with `--package`. This is required when running from a virtual
+  Cargo workspace, because that workspace root does not itself define a package.
+  Exactly one package may be selected; if omitted, cargo-crapapp uses the
+  package defined by the current `Cargo.toml`.
 - `features`: optional array of strings. Entries are passed to Cargo as enabled
   features. If missing or empty, cargo-crapapp does not pass feature flags.
 
